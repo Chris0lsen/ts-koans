@@ -21,7 +21,7 @@ jobs:
       - name: Set up Go
         uses: actions/setup-go@v5
         with:
-          go-version: "1.23"
+          go-version: "1.21"
       - name: Build
         run: |
           FILENAME="tskoans-${{ matrix.goos }}-${{ matrix.goarch }}"
@@ -29,10 +29,10 @@ jobs:
             FILENAME="$FILENAME.exe"
           fi
           GOOS=${{ matrix.goos }} GOARCH=${{ matrix.goarch }} CGO_ENABLED=0 go build -o "$FILENAME"
-      - name: Upload artifacts
+      - name: Upload artifact
         uses: actions/upload-artifact@v4
         with:
-          name: binaries
+          name: binaries-${{ matrix.goos }}-${{ matrix.goarch }}
           path: tskoans-*
   release:
     name: Release
@@ -41,7 +41,7 @@ jobs:
     steps:
       - uses: actions/download-artifact@v4
         with:
-          name: binaries
+          pattern: binaries-*
           path: .
       - uses: ncipollo/release-action@v1
         with:
