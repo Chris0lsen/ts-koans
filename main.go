@@ -1,10 +1,18 @@
 package main
 
 import (
+	"bufio"
+	"bytes"
+	"context"
+	"flag"
 	"fmt"
 	"os"
 	"os/exec"
+	"path/filepath"
+	"regexp"
+	"strconv"
 	"strings"
+	"time"
 
 	"github.com/charmbracelet/bubbles/list"
 	"github.com/charmbracelet/bubbles/spinner"
@@ -23,10 +31,11 @@ const (
 )
 
 type model struct {
+	program         *tea.Program
 	state           state
 	list            list.Model
 	textarea        textarea.Model
-	output          string
+	outputLines     []runnerOutputMsg
 	selected        int
 	exercises       []internal.Exercise
 	width           int
@@ -34,10 +43,69 @@ type model struct {
 	running         bool
 	spinner         spinner.Model
 	persistentState internal.PersistentState
+	debugMode       bool
+	debugLog        []string
 }
 
 type exerciseResultMsg struct {
 	output string
+}
+type setProgramMsg struct{ program *tea.Program }
+
+type runnerDebugMsg struct{ Line string }
+type runnerOutputMsg struct {
+	Line      string
+	Assertion bool
+}
+type runnerDoneMsg struct{ Err error }
+
+// errorLinePattern matches e.g. "typecheck.ts(10,44): error ..."
+var errorLinePattern = regexp.MustCompile(`typecheck\.ts\((\d+),\d+\): error`)
+
+func printHelpfulTSCErrors(tscOutput, harnessPath string, p *tea.Program) {
+	harnessBytes, _ := os.ReadFile(harnessPath)
+	harnessLines := strings.Split(string(harnessBytes), "\n")
+	scanner := bufio.NewScanner(strings.NewReader(tscOutput))
+	errorLinePattern := regexp.MustCompile(`typecheck\.ts\((\d+),\d+\): error`)
+	for scanner.Scan() {
+		line := scanner.Text()
+		if m := errorLinePattern.FindStringSubmatch(line); m != nil {
+			lineNum, _ := strconv.Atoi(m[1])
+			// Print the comment line (if any) above the assertion
+			if lineNum-2 >= 0 && lineNum-2 < len(harnessLines) {
+				p.Send(runnerOutputMsg{Line: harnessLines[lineNum-2], Assertion: true})
+			}
+			// Print the assertion line itself
+			// if lineNum-1 >= 0 && lineNum-1 < len(harnessLines) {
+			// 	p.Send(runnerOutputMsg{Line: harnessLines[lineNum-1]})
+			// }
+		}
+		// Always print the error itself
+		p.Send(runnerOutputMsg{Line: line})
+	}
+}
+
+func (m *model) appendDebug(msg string) {
+	if m.debugMode {
+		m.debugLog = append(m.debugLog, msg)
+		if len(m.debugLog) > 100 {
+			m.debugLog = m.debugLog[len(m.debugLog)-100:]
+		}
+	}
+}
+
+func makeListItems(exs []internal.Exercise, completed map[int]bool) []list.Item {
+	items := make([]list.Item, len(exs))
+	for i, ex := range exs {
+		label := ex.Title()
+		if completed[i] {
+			label = "✅ " + label
+		}
+		ex2 := ex
+		ex2.Label = label
+		items[i] = ex2
+	}
+	return items
 }
 
 func initialModel(state internal.PersistentState) model {
@@ -47,14 +115,15 @@ func initialModel(state internal.PersistentState) model {
 		items[i] = ex
 	}
 
-	l := list.New(items, list.NewDefaultDelegate(), 30, 14)
+	//l := list.New(items, list.NewDefaultDelegate(), 30, 14)
+	l := list.New(makeListItems(exs, state.Completed), list.NewDefaultDelegate(), 30, 14)
 	l.Title = "Select an Exercise"
 	l.SetShowHelp(false)
 
 	t := textarea.New()
 	t.Placeholder = "Edit your code here..."
-	t.SetHeight(8)
-	t.SetWidth(50)
+	t.SetHeight(16)
+	t.SetWidth(80)
 	t.ShowLineNumbers = true
 
 	s := spinner.New()
@@ -76,7 +145,6 @@ func initialModel(state internal.PersistentState) model {
 	} else {
 		m.textarea.SetValue(m.exercises[m.selected].StarterCode)
 	}
-	// ... any additional model init ...
 	return m
 }
 
@@ -89,25 +157,157 @@ func insertSpacesAtCursor(t textarea.Model, n int) textarea.Model {
 	return t
 }
 
-func (m model) runExercise() tea.Cmd {
-	userCode := m.textarea.Value()
-	testScript := m.exercises[m.selected].TestScript
-	return func() tea.Msg {
-		out, _ := internal.RunTypeScript(userCode, testScript)
-		return exerciseResultMsg{output: out}
+func copyVersionFilesToTempDir(tempDir string) {
+	for _, filename := range []string{".tool-versions", ".nvmrc", ".node-version"} {
+		if data, err := os.ReadFile(filename); err == nil {
+			os.WriteFile(filepath.Join(tempDir, filename), data, 0600)
+		}
 	}
 }
 
-func (m model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
-	if m.running {
-		var spinCmd tea.Cmd
-		m.spinner, spinCmd = m.spinner.Update(msg)
-		return m, spinCmd
-	}
+func runExerciseStreamed(userCode, testScript string, program *tea.Program, ex internal.Exercise) tea.Cmd {
+	return func() tea.Msg {
+		// Create temp dir
+		tmpDir, err := os.MkdirTemp("", "tskoans-*")
+		if err != nil {
+			program.Send(runnerOutputMsg{Line: fmt.Sprintf("Failed to create temp dir: %v", err)})
+			program.Send(runnerDoneMsg{Err: err})
+			return nil
+		}
+		copyVersionFilesToTempDir(tmpDir)
 
+		defer os.RemoveAll(tmpDir)
+
+		// Write user.ts
+		userPath := filepath.Join(tmpDir, "user.ts")
+		if err := os.WriteFile(userPath, []byte(userCode), 0644); err != nil {
+			program.Send(runnerOutputMsg{Line: fmt.Sprintf("Failed to write user.ts: %v", err)})
+			program.Send(runnerDoneMsg{Err: err})
+			return nil
+		}
+
+		// Write type-checking harness
+		typecheckPath := filepath.Join(tmpDir, "typecheck.ts")
+		typeHarness := fmt.Sprintf(`import { %s } from "./user";
+%s
+`, ex.FunctionName, ex.TypeAssertions)
+		if err := os.WriteFile(typecheckPath, []byte(typeHarness), 0644); err != nil {
+			program.Send(runnerOutputMsg{Line: fmt.Sprintf("Failed to write typecheck.ts: %v", err)})
+			program.Send(runnerDoneMsg{Err: err})
+			return nil
+		}
+
+		// Write runner.mjs
+		runnerPath := filepath.Join(tmpDir, "runner.mjs")
+		runner := fmt.Sprintf(`
+import { readFileSync } from 'fs';
+import vm from 'vm';
+
+console.log("[runner] Starting test runner...");
+
+let userCode;
+try {
+    userCode = readFileSync('./user.js', 'utf8');
+    console.log("[runner] Loaded user.js");
+} catch (e) {
+    console.log("[runner] Failed to load user.js:", e.message);
+    process.exit(1);
+}
+
+const sandbox = {
+    exports: {},
+    module: { exports: {} },
+    console,
+};
+
+vm.createContext(sandbox);
+
+try {
+    vm.runInContext(userCode, sandbox, { timeout: 1000 });
+    const exports = sandbox.exports;
+    %s
+    console.log("✅ All tests passed!");
+} catch (e) {
+    console.log("❌ Test failed:", e && e.message ? e.message : e);
+    process.exit(1);
+}
+`, testScript)
+		if err := os.WriteFile(runnerPath, []byte(runner), 0644); err != nil {
+			program.Send(runnerOutputMsg{Line: fmt.Sprintf("Failed to write runner.mjs: %v", err)})
+			program.Send(runnerDoneMsg{Err: err})
+			return nil
+		}
+
+		tscCmd := exec.Command("tsc", userPath, typecheckPath, "--target", "es2020", "--module", "commonjs", "--outDir", tmpDir)
+		tscCmd.Dir = tmpDir
+
+		var tscStderrBuf bytes.Buffer
+		tscCmd.Stderr = &tscStderrBuf
+
+		var tscStdoutBuf bytes.Buffer
+		tscCmd.Stdout = &tscStdoutBuf
+
+		if err := tscCmd.Run(); err != nil {
+			program.Send(runnerDebugMsg{Line: fmt.Sprintf("tsc exit error: %v", err)})
+
+			program.Send(runnerDebugMsg{Line: "STDERR: " + tscStderrBuf.String()})
+			program.Send(runnerDebugMsg{Line: "STDOUT: " + tscStdoutBuf.String()})
+
+			// Print annotated errors to your TUI/debug panel/logs
+			printHelpfulTSCErrors(tscStdoutBuf.String(), typecheckPath, program)
+
+			program.Send(runnerOutputMsg{Line: fmt.Sprintf("[tsc] Compilation failed: %v", err)})
+			program.Send(runnerDoneMsg{Err: err})
+			return nil
+		}
+
+		ctx, cancel := context.WithTimeout(context.Background(), 2*time.Second)
+		defer cancel()
+
+		nodeCmd := exec.CommandContext(ctx, "node", runnerPath)
+		nodeCmd.Dir = tmpDir
+
+		var nodeStdoutBuf, nodeStderrBuf bytes.Buffer
+		nodeCmd.Stdout = &nodeStdoutBuf
+		nodeCmd.Stderr = &nodeStderrBuf
+
+		err = nodeCmd.Run()
+
+		if ctx.Err() == context.DeadlineExceeded {
+			program.Send(runnerOutputMsg{Line: "[node] Execution timed out!"})
+			program.Send(runnerDoneMsg{Err: ctx.Err()})
+			return nil
+		}
+		if nodeStdoutBuf.Len() > 0 {
+			program.Send(runnerOutputMsg{Line: "[node stdout] " + nodeStdoutBuf.String()})
+		}
+		if nodeStderrBuf.Len() > 0 {
+			program.Send(runnerOutputMsg{Line: "[node stderr] " + nodeStderrBuf.String()})
+		}
+		if err != nil {
+			program.Send(runnerOutputMsg{Line: fmt.Sprintf("[node] Test runner failed: %v", err)})
+		}
+		program.Send(runnerDoneMsg{Err: err})
+		return nil
+
+	}
+}
+
+func outputLinesToString(lines []runnerOutputMsg) string {
+	strs := make([]string, len(lines))
+	for i, msg := range lines {
+		strs[i] = msg.Line
+	}
+	return strings.Join(strs, "\n")
+}
+
+func (m model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 	switch m.state {
 	case menu:
 		switch msg := msg.(type) {
+		case setProgramMsg:
+			m.program = msg.program
+
 		case tea.WindowSizeMsg:
 			m.width = msg.Width
 			m.height = msg.Height
@@ -118,17 +318,21 @@ func (m model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 			case "q", "ctrl+c":
 				// Save before quitting
 				m.persistentState.SelectedIndex = m.selected
-				m.persistentState.Solutions[m.selected] = m.textarea.Value()
 				internal.SaveState(m.persistentState)
 				return m, tea.Quit
 			case "enter":
+				m.outputLines = nil
 				m.persistentState.SelectedIndex = m.selected
-				m.persistentState.Solutions[m.selected] = m.textarea.Value()
 				internal.SaveState(m.persistentState)
 				i := m.list.Index()
 				m.selected = i
 				selectedEx := m.exercises[i]
-				m.textarea.SetValue(selectedEx.StarterCode)
+				// Restore user's previous solution if it exists
+				if code, ok := m.persistentState.Solutions[i]; ok && code != "" {
+					m.textarea.SetValue(code)
+				} else {
+					m.textarea.SetValue(selectedEx.StarterCode)
+				}
 				m.textarea.Focus()
 				m.state = editor
 			}
@@ -139,16 +343,69 @@ func (m model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 
 	case editor:
 		switch msg := msg.(type) {
+		case runnerOutputMsg:
+			m.outputLines = append(m.outputLines, msg)
+			if len(m.outputLines) > 100 {
+				m.outputLines = m.outputLines[len(m.outputLines)-100:]
+			}
+
+		case runnerDebugMsg:
+			if m.debugMode {
+				m.appendDebug(msg.Line)
+			}
+
+			return m, nil
+
+		case runnerDoneMsg:
+			m.running = false
+
+			output := outputLinesToString(m.outputLines)
+			if strings.Contains(output, "✅") {
+				if m.persistentState.Completed == nil {
+					m.persistentState.Completed = make(map[int]bool)
+				}
+				m.persistentState.Completed[m.selected] = true
+				m.list.SetItems(makeListItems(m.exercises, m.persistentState.Completed))
+				internal.SaveState(m.persistentState)
+			}
+			return m, nil
 		case tea.WindowSizeMsg:
+
 			m.width = msg.Width
 			m.height = msg.Height
-		case exerciseResultMsg:
-			m.running = false
-			m.output = msg.output
+
+			descLines := len(strings.Split(m.exercises[m.selected].Description(), "\n"))
+			headerLines := 1
+			blankAbove := 2
+			blankBelow := 1
+			outputPanelHeight := 10
+			debugPanelHeight := 0
+			if m.debugMode {
+				debugPanelHeight = 5
+			}
+			blankBelowPanels := 1
+			helpLines := 1
+
+			linesAboveEditor := headerLines + descLines + blankAbove
+			linesBelowEditor := blankBelow + outputPanelHeight + debugPanelHeight + blankBelowPanels + helpLines
+
+			editorHeight := m.height - linesAboveEditor - linesBelowEditor
+			if editorHeight < 3 {
+				editorHeight = 3
+			}
+
+			m.textarea.SetHeight(editorHeight)
+			m.textarea.SetWidth(m.width)
+			m.textarea.SetCursor(0)
+
 			return m, nil
 		case tea.KeyMsg:
 			switch msg.String() {
 			case "esc":
+				m.outputLines = nil
+				m.persistentState.SelectedIndex = m.selected
+				m.persistentState.Solutions[m.selected] = m.textarea.Value()
+				internal.SaveState(m.persistentState)
 				m.state = menu
 				m.textarea.Blur()
 				return m, nil
@@ -158,9 +415,11 @@ func (m model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 			case "f5":
 				m.persistentState.Solutions[m.selected] = m.textarea.Value()
 				internal.SaveState(m.persistentState)
-				m.output = ""    // Clear output
-				m.running = true // Start spinner
-				return m, m.runExercise()
+				userCode := m.textarea.Value()
+				testScript := m.exercises[m.selected].TestScript
+				m.outputLines = nil
+				m.running = true
+				return m, runExerciseStreamed(userCode, testScript, m.program, m.exercises[m.selected])
 			}
 		}
 		var cmd tea.Cmd
@@ -168,6 +427,11 @@ func (m model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		return m, cmd
 	}
 
+	if m.running {
+		var spinCmd tea.Cmd
+		m.spinner, spinCmd = m.spinner.Update(msg)
+		return m, spinCmd
+	}
 	return m, nil
 }
 
@@ -175,61 +439,80 @@ var outputStyle = lipgloss.NewStyle().
 	Border(lipgloss.NormalBorder()).
 	Padding(0, 1).
 	MarginTop(1).
-	Width(50).
+	MarginLeft(1).
+	MarginRight(1).
+	Width(80).
 	Faint(true)
-
-func (m model) outputColor() lipgloss.Style {
-	if strings.Contains(m.output, "✅") {
-		return outputStyle.Copy().Foreground(lipgloss.Color("10")) // green
-	}
-	if strings.Contains(m.output, "❌") {
-		return outputStyle.Copy().Foreground(lipgloss.Color("9")) // red
-	}
-	return outputStyle
-}
 
 func (m model) renderOutputPanel() string {
 	boxHeight := 10
-	lines := strings.Split(m.output, "\n")
-	if len(lines) > boxHeight {
-		lines = lines[:boxHeight]
-	}
-	// Pad if fewer than 10 lines
-	for len(lines) < boxHeight {
-		lines = append(lines, "")
-	}
-	// Show spinner if running
-	outStr := strings.Join(lines, "\n")
+
 	if m.running {
-		outStr = m.spinner.View() + " Running..." + "\n" + strings.Repeat(" ", m.width)
+		spin := m.spinner.View()
+		lines := []string{spin + " Running..."}
+		for len(lines) < boxHeight {
+			lines = append(lines, "")
+		}
+		return outputStyle.Render(strings.Join(lines, "\n"))
 	}
-	// Colorize: red for compiler error, green for success, yellow for test failure
-	style := outputStyle
-	switch {
-	case strings.Contains(m.output, "error") || strings.Contains(m.output, "Error"):
-		style = style.Foreground(lipgloss.Color("9")) // Red
-	case strings.Contains(m.output, "✅"):
-		style = style.Foreground(lipgloss.Color("10")) // Green
-	case strings.Contains(m.output, "❌"):
-		style = style.Foreground(lipgloss.Color("11")) // Yellow
+
+	lines := m.outputLines
+	if len(lines) > boxHeight {
+		lines = lines[len(lines)-boxHeight:]
 	}
-	return style.Render(outStr)
+	for len(lines) < boxHeight {
+		lines = append(lines, runnerOutputMsg{Line: ""})
+	}
+
+	// Style for assertion lines
+	assertionStyle := lipgloss.NewStyle().Foreground(lipgloss.Color("9")).Bold(true)
+	renderedLines := make([]string, len(lines))
+	for i, msg := range lines {
+		if msg.Assertion {
+			renderedLines[i] = assertionStyle.Render(msg.Line)
+		} else {
+			renderedLines[i] = msg.Line
+		}
+	}
+
+	return outputStyle.Copy().Width(m.width).Render(strings.Join(renderedLines, "\n"))
 }
 
 func (m model) View() string {
 	switch m.state {
 	case menu:
-		// Render the exercise menu (list.Select or similar)
-		// and any menu help text
 		return m.list.View() + "\n\n[enter] Start | [q] Quit"
 	case editor:
-		// Render the header, desc, editor, output panel, etc.
 		header := lipgloss.NewStyle().Bold(true).Render(m.exercises[m.selected].Title())
 		desc := m.exercises[m.selected].Description()
 		editor := m.textarea.View()
 		output := m.renderOutputPanel()
-		return fmt.Sprintf("%s\n%s\n\n%s\n\n%s\n\n[esc] Back | [F5] Run",
-			header, desc, editor, output,
+
+		debugPanel := ""
+		if m.debugMode {
+			debugPanelHeight := 5
+			n := len(m.debugLog)
+			start := 0
+			if n > debugPanelHeight {
+				start = n - debugPanelHeight
+			}
+			logs := m.debugLog[start:]
+			debugPanel = lipgloss.NewStyle().
+				Border(lipgloss.NormalBorder()).
+				Padding(0, 1).
+				MarginTop(1).
+				Width(m.width).
+				Faint(true).
+				Foreground(lipgloss.Color("8")).
+				Render(strings.Join(logs, "\n"))
+		}
+
+		if m.debugMode {
+			m.appendDebug(fmt.Sprintf("header:\n%s\ndesc:\n%s\n", header, desc))
+		}
+
+		return fmt.Sprintf("%s\n%s\n\n%s\n\n%s\n%s\n\n[esc] Back | [F5] Run",
+			header, desc, editor, output, debugPanel,
 		)
 	default:
 		return "Loading..."
@@ -259,13 +542,21 @@ func main() {
 		os.Exit(1)
 	}
 
+	debug := flag.Bool("debug", false, "enable debug mode")
+	flag.Parse()
+
 	state, err := internal.LoadState()
 	if err != nil {
 		fmt.Fprintln(os.Stderr, "Warning: Could not load previous state:", err)
-		// You may want to continue with a fresh state, or exit if this is critical
 	}
+	m := initialModel(state)
+	m.debugMode = *debug
+	m.debugLog = append(m.debugLog, "Debug panel is working!")
 
-	p := tea.NewProgram(initialModel(state), tea.WithAltScreen())
+	p := tea.NewProgram(m, tea.WithAltScreen())
+	go func() {
+		p.Send(setProgramMsg{program: p})
+	}()
 	if err := p.Start(); err != nil {
 		fmt.Println("Error running program:", err)
 		os.Exit(1)

@@ -6,152 +6,246 @@ type Exercise struct {
 	description string
 	StarterCode string
 	TestScript  string
+	Label       string
+	FunctionName string
+	TypeAssertions string
 }
 
-func (e Exercise) Title() string       { return e.title }
+func (e Exercise) Title() string {
+    if e.Label != "" {
+        return e.Label
+    }
+    return e.title
+}
 func (e Exercise) Description() string { return e.description }
 func (e Exercise) FilterValue() string { return e.title }
 
 func Exercises() []Exercise {
-	var exercises = []Exercise{
-		{
-			title:       "Type Annotations",
-			description: "Fix the function signature so that add accepts two numbers and returns a number.",
-			StarterCode: `// Fix the types!
-export function add(a, b): ??? {
-  return a + b;
+var exercises = []Exercise{
+    {
+        ID: "add",
+        title: "Add Two Numbers",
+        description: "Write a function that adds two numbers. Both arguments and the return value must be numbers.",
+        StarterCode: `
+export function add(a, b) {
+  // TODO: Add two numbers
 }
 `,
-			TestScript: `
-if (typeof exports.add !== "function") throw new Error("Not a function");
-if (exports.add(2, 3) !== 5) throw new Error("add(2, 3) !== 5");
+        TestScript: `
+if (typeof sandbox.exports.add !== "function") throw new Error("Not a function");
+if (sandbox.exports.add(2, 3) !== 5) throw new Error("add(2, 3) !== 5");
+console.log("✅ All tests passed!");
 `,
-		},
-		{
-			title:       "Type Inference",
-			description: "What type does TypeScript infer for the return value? Add an explicit return type.",
-			StarterCode: `export function double(x: number) {
-  return x * 2;
+        Label: "",
+        FunctionName: "add",
+        TypeAssertions: `
+// Type check errors below mean your function signature or return type is not correct!
+// Fix your function until no errors appear here.
+
+type Assert<T extends true> = T;
+
+// Assert first parameter is a number
+type AssertAddParam0IsNumber = Assert<Parameters<typeof add>[0] extends number ? true : false>;
+
+// Assert second parameter is a number
+type AssertAddParam1IsNumber = Assert<Parameters<typeof add>[1] extends number ? true : false>;
+
+// Assert return type is number
+type AssertAddReturnType = Assert<ReturnType<typeof add> extends number ? true : false>;
+`,
+    },
+    {
+        ID: "make-user",
+        title: "Make User Object",
+        description: "Create a function that returns a user object with properties 'name' (string) and 'age' (number).",
+        StarterCode: `
+export function makeUser(name, age) {
+  // TODO: Return an object with 'name' and 'age'
 }
 `,
-			TestScript: `
-if (exports.double(5) !== 10) throw new Error("double(5) failed");
+        TestScript: `
+const u = sandbox.exports.makeUser("Alex", 42);
+if (!u || u.name !== "Alex" || u.age !== 42) throw new Error("Incorrect user object");
+console.log("✅ All tests passed!");
 `,
-		},
-		{
-			title:       "Union Types",
-			description: "Make 'describe' accept a string or a number and return a string.",
-			StarterCode: `export function describe(input: ???): string {
-  return "value: " + input;
-}
+        Label: "",
+        FunctionName: "makeUser",
+        TypeAssertions: `
+// Type check errors below mean your function signature or return type is not correct!
+// Fix your function until no errors appear here.
+
+type Assert<T extends true> = T;
+type MustBeUser = { name: string; age: number; };
+
+// Assert first parameter is string
+type AssertMakeUserParam0IsString = Assert<Parameters<typeof makeUser>[0] extends string ? true : false>;
+
+// Assert second parameter is number
+type AssertMakeUserParam1IsNumber = Assert<Parameters<typeof makeUser>[1] extends number ? true : false>;
+
+// Assert return type matches { name: string; age: number }
+type AssertMakeUserReturnType = Assert<ReturnType<typeof makeUser> extends MustBeUser ? true : false>;
 `,
-			TestScript: `
-if (exports.describe(5) !== "value: 5") throw new Error();
-if (exports.describe("hi") !== "value: hi") throw new Error();
-`,
-		},
-		{
-			title:       "Interfaces",
-			description: "Define the User interface and use it as the type for the function argument.",
-			StarterCode: `// Fill in the interface and function argument type
+    },
+    {
+        ID: "optional-nickname",
+        title: "Optional Properties",
+        description: "Add an optional property 'nickname' (string) to the User interface and implement getNickname.",
+        StarterCode: `
 interface User {
-  // ...
-}
-
-export function greet(user): string {
-  return "Hello, " + user.name;
-}
-`,
-			TestScript: `
-if (exports.greet({ name: "Ada", age: 36 }) !== "Hello, Ada") throw new Error();
-`,
-		},
-		{
-			title:       "Type Aliases",
-			description: "Define a type alias for a union type (yes or no) and use it as the function argument.",
-			StarterCode: `// Define a type alias and use it in the function
-export function accept(input: ???): boolean {
-  return input === "yes";
-}
-`,
-			TestScript: `
-if (exports.accept("yes") !== true) throw new Error();
-if (exports.accept("no") !== false) throw new Error();
-`,
-		},
-		{
-			title:       "Literal Types",
-			description: "Make the function only accept 'start' or 'stop' as argument values.",
-			StarterCode: `export function command(input: ???): string {
-  return "got " + input;
-}
-`,
-			TestScript: `
-if (exports.command("start") !== "got start") throw new Error();
-if (exports.command("stop") !== "got stop") throw new Error();
-`,
-		},
-		{
-			title:       "keyof Operator",
-			description: "Use keyof to constrain k so only valid keys of Person are allowed.",
-			StarterCode: `interface Person {
   name: string;
-  age: number;
+  // TODO: Add an optional property 'nickname'
 }
 
-export function getValue(obj: Person, k: ???): string | number {
-  return obj[k];
+export function getNickname(user: User): string | undefined {
+  // TODO: Implement me!
 }
 `,
-			TestScript: `
-const p = { name: "Bob", age: 30 };
-if (exports.getValue(p, "name") !== "Bob") throw new Error();
-if (exports.getValue(p, "age") !== 30) throw new Error();
+        TestScript: `
+if (sandbox.exports.getNickname({ name: "A" }) !== undefined) throw new Error("Should return undefined for missing nickname");
+if (sandbox.exports.getNickname({ name: "A", nickname: "B" }) !== "B") throw new Error("Should return nickname");
+console.log("✅ All tests passed!");
 `,
-		},
-		{
-			title:       "typeof Operator",
-			description: "Use typeof to type the function argument based on the 'template' object.",
-			StarterCode: `const template = { id: 1, label: "Test" };
-// Use typeof to type the argument
-export function label(obj: ???): string {
-  return obj.label;
+        Label: "",
+        FunctionName: "getNickname",
+        TypeAssertions: `
+// Type check errors below mean your function signature or return type is not correct!
+// Fix your function until no errors appear here.
+
+type Assert<T extends true> = T;
+type HasOptional<T, K extends keyof T> =
+  {} extends Pick<T, K> ? true : false;
+type UserParam = Parameters<typeof getNickname>[0];
+
+// Assert that 'nickname' is optional on User
+type AssertNicknameIsOptional = Assert<HasOptional<UserParam, "nickname">>;
+
+// Assert return type
+type AssertGetNicknameReturnType = Assert<ReturnType<typeof getNickname> extends string | undefined ? true : false>;
+`,
+    },
+    {
+        ID: "union-type",
+        title: "Union Types",
+        description: "Write a function that accepts a string or number and returns its string representation.",
+        StarterCode: `
+export function toStringValue(x) {
+  // TODO: Implement me!
 }
 `,
-			TestScript: `
-if (exports.label({ id: 2, label: "hi" }) !== "hi") throw new Error();
+        TestScript: `
+if (sandbox.exports.toStringValue(42) !== "42") throw new Error("Should stringify numbers");
+if (sandbox.exports.toStringValue("hi") !== "hi") throw new Error("Should return strings");
+console.log("✅ All tests passed!");
 `,
-		},
-		{
-			title:       "Generics",
-			description: "Make the identity function generic so it works with any type.",
-			StarterCode: `export function identity(x): ??? {
-  return x;
+        Label: "",
+        FunctionName: "toStringValue",
+        TypeAssertions: `
+// Type check errors below mean your function signature or return type is not correct!
+// Fix your function until no errors appear here.
+
+type Assert<T extends true> = T;
+
+// Assert parameter is string or number
+type AssertToStringValueParam = Assert<Parameters<typeof toStringValue>[0] extends string | number ? true : false>;
+
+// Assert return type is string
+type AssertToStringValueReturnType = Assert<ReturnType<typeof toStringValue> extends string ? true : false>;
+`,
+    },
+    {
+        ID: "keyof-type",
+        title: "keyof Types",
+        description: "Write a function that takes an object and a key, and returns the value at that key. Use keyof for type safety.",
+        StarterCode: `
+export function getValue(obj, key) {
+  // TODO: Implement me!
 }
 `,
-			TestScript: `
-if (exports.identity(3) !== 3) throw new Error();
-if (exports.identity("a") !== "a") throw new Error();
+        TestScript: `
+const obj = { a: 1, b: 2 };
+if (sandbox.exports.getValue(obj, "a") !== 1) throw new Error("getValue did not work for 'a'");
+if (sandbox.exports.getValue(obj, "b") !== 2) throw new Error("getValue did not work for 'b'");
+console.log("✅ All tests passed!");
 `,
-		},
-		{
-			title:       "Optional Properties",
-			description: "Add a type to 'cfg' so that timeout is optional.",
-			StarterCode: `interface Config {
-  url: string;
-  timeout?: number;
+        Label: "",
+        FunctionName: "getValue",
+        TypeAssertions: `
+// Type check errors below mean your function signature or return type is not correct!
+// Fix your function until no errors appear here.
+
+type Assert<T extends true> = T;
+type O = { a: number; b: number; };
+
+// Assert first parameter is O
+type AssertGetValueParam0 = Assert<Parameters<typeof getValue>[0] extends O ? true : false>;
+
+// Assert second parameter is keyof O
+type AssertGetValueParam1 = Assert<Parameters<typeof getValue>[1] extends keyof O ? true : false>;
+
+// Assert return type is number
+type AssertGetValueReturnType = Assert<ReturnType<typeof getValue> extends number ? true : false>;
+`,
+    },
+    {
+        ID: "readonly-array",
+        title: "Readonly Arrays",
+        description: "Write a function that accepts a readonly array of numbers and returns their sum.",
+        StarterCode: `
+export function sumReadonly(nums) {
+  // TODO: Implement me!
 }
-// Fix the argument type
-export function connect(cfg): string {
-  return cfg.url + (cfg.timeout ? " with timeout" : "");
+`,
+        TestScript: `
+if (sandbox.exports.sumReadonly([1,2,3]) !== 6) throw new Error("Sum incorrect");
+console.log("✅ All tests passed!");
+`,
+        Label: "",
+        FunctionName: "sumReadonly",
+        TypeAssertions: `
+// Type check errors below mean your function signature or return type is not correct!
+// Fix your function until no errors appear here.
+
+type Assert<T extends true> = T;
+
+// Assert parameter is readonly number[]
+type AssertSumReadonlyParam = Assert<Parameters<typeof sumReadonly>[0] extends readonly number[] ? true : false>;
+
+// Assert return type is number
+type AssertSumReadonlyReturnType = Assert<ReturnType<typeof sumReadonly> extends number ? true : false>;
+`,
+    },
+    {
+        ID: "typeof-inference",
+        title: "typeof Inference",
+        description: "Use 'typeof' to type a new variable after a constant has been declared.",
+        StarterCode: `
+const ANSWER = 42;
+
+// TODO: Type x using 'typeof'
+const x = ANSWER;
+export { x }
+`,
+        TestScript: `
+if (sandbox.exports.x !== 42) throw new Error("x should be 42");
+console.log("✅ All tests passed!");
+`,
+        Label: "",
+        FunctionName: "x",
+        TypeAssertions: `
+// Type check errors below mean your function signature or return type is not correct!
+// Fix your function until no errors appear here.
+
+type Assert<T extends true> = T;
+
+// Assert x has the same type as ANSWER
+declare const ANSWER: 42;
+declare const x: typeof ANSWER;
+type AssertTypeofX = Assert<typeof x extends typeof ANSWER ? true : false>;
+`,
+    },
 }
-`,
-			TestScript: `
-if (exports.connect({ url: "a" }) !== "a") throw new Error();
-if (exports.connect({ url: "b", timeout: 100 }) !== "b with timeout") throw new Error();
-`,
-		},
-	}
+
 
 	return exercises
 }
