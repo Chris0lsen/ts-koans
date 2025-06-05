@@ -7,7 +7,7 @@ on:
 
 permissions:
   contents: write
-  
+
 jobs:
   build:
     name: Build binaries
@@ -37,16 +37,19 @@ jobs:
         with:
           name: binaries-${{ matrix.goos }}-${{ matrix.goarch }}
           path: tskoans-*
-  release:
-    name: Release
-    needs: build
-    runs-on: ubuntu-latest
-    steps:
-      - uses: actions/download-artifact@v4
-        with:
-          pattern: binaries-*
-          path: .
-      - uses: ncipollo/release-action@v1
-        with:
-          artifacts: "tskoans-*"
-          token: ${{ secrets.GITHUB_TOKEN }}
+release:
+  name: Release
+  needs: build
+  runs-on: ubuntu-latest
+  steps:
+    - uses: actions/download-artifact@v4
+      with:
+        pattern: binaries-*
+        path: .
+    - name: Move binaries to root
+      run: |
+        find . -type f -name "tskoans-*" -exec mv {} . \;
+    - uses: ncipollo/release-action@v1
+      with:
+        artifacts: "tskoans-*"
+        token: ${{ secrets.GITHUB_TOKEN }}
