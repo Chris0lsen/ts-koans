@@ -14,9 +14,11 @@ jobs:
     runs-on: ubuntu-latest
     strategy:
       matrix:
-        goos: [linux, darwin, windows]
+        goos: [linux, windows]
         goarch: [amd64]
         include:
+          - goos: darwin
+            goarch: amd64
           - goos: darwin
             goarch: arm64
     steps:
@@ -25,18 +27,30 @@ jobs:
         uses: actions/setup-go@v5
         with:
           go-version: "1.21"
-      - name: Build
+      - name: Build and package
         run: |
-          FILENAME="tskoans-${{ matrix.goos }}-${{ matrix.goarch }}"
+          EXT=""
+          ARCHIVE_EXT="tar.gz"
           if [ "${{ matrix.goos }}" = "windows" ]; then
-            FILENAME="$FILENAME.exe"
+            EXT=".exe"
+            ARCHIVE_EXT="zip"
           fi
-          GOOS=${{ matrix.goos }} GOARCH=${{ matrix.goarch }} CGO_ENABLED=0 go build -o "$FILENAME"
+          BINARY="tskoans${EXT}"
+          ARCHIVE="tskoans-${{ matrix.goos }}-${{ matrix.goarch }}.${ARCHIVE_EXT}"
+          GOOS=${{ matrix.goos }} GOARCH=${{ matrix.goarch }} CGO_ENABLED=0 go build -o "$BINARY"
+          if [ "${{ matrix.goos }}" = "windows" ]; then
+            zip "$ARCHIVE" "$BINARY"
+          else
+            tar -czf "$ARCHIVE" "$BINARY"
+          fi
       - name: Upload artifact
         uses: actions/upload-artifact@v4
         with:
           name: binaries-${{ matrix.goos }}-${{ matrix.goarch }}
-          path: tskoans-*
+          path: |
+            tskoans-*.tar.gz
+            tskoans-*.zip
+
   release:
     name: Release
     needs: build
@@ -46,10 +60,11 @@ jobs:
         with:
           pattern: binaries-*
           path: .
-      - name: Move binaries to root
+      - name: Move archives to root
         run: |
-          find . -type f -name "tskoans-*" -exec mv {} . \;
+          find . -type f -name "tskoans-*.tar.gz" -exec mv {} . \;
+          find . -type f -name "tskoans-*.zip" -exec mv {} . \;
       - uses: ncipollo/release-action@v1
         with:
-          artifacts: "tskoans-*"
+          artifacts: "tskoans-*.tar.gz,tskoans-*.zip"
           token: ${{ secrets.GITHUB_TOKEN }}
