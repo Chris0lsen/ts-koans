@@ -178,67 +178,31 @@ func runExerciseStreamed(userCode, testScript string, program *tea.Program, ex i
 
 		defer os.RemoveAll(tmpDir)
 
-		// Write user.ts
-		userPath := filepath.Join(tmpDir, "user.ts")
-		if err := os.WriteFile(userPath, []byte(userCode), 0644); err != nil {
-			program.Send(runnerOutputMsg{Line: fmt.Sprintf("Failed to write user.ts: %v", err)})
-			program.Send(runnerDoneMsg{Err: err})
-			return nil
-		}
-
-		// Write type-checking harness
 		typecheckPath := filepath.Join(tmpDir, "typecheck.ts")
-		typeHarness := fmt.Sprintf(`import { %s } from "./user";
-%s
-`, ex.FunctionName, ex.TypeAssertions)
-		if err := os.WriteFile(typecheckPath, []byte(typeHarness), 0644); err != nil {
+
+		typeHarness := `// -- Type Assertion Utilities --
+
+// Produces a type error if 'T' is not 'true'
+type Assert<T extends true> = T;
+
+// Checks if two types are the same (structurally)
+type IsType<A, B> = (<T>() => T extends A ? 1 : 2) extends
+                    (<T>() => T extends B ? 1 : 2) ? true : false;
+
+// Checks if type A is not assignable to B
+type IsNotType<A, B> = IsType<A, B> extends true ? false : true;
+
+`
+
+		fullTypecheck := string(userCode) + "\n\n" + typeHarness + "\n" + ex.TypeAssertions + "\n"
+
+		if err := os.WriteFile(typecheckPath, []byte(fullTypecheck), 0644); err != nil {
 			program.Send(runnerOutputMsg{Line: fmt.Sprintf("Failed to write typecheck.ts: %v", err)})
 			program.Send(runnerDoneMsg{Err: err})
 			return nil
 		}
 
-		// Write runner.mjs
-		runnerPath := filepath.Join(tmpDir, "runner.mjs")
-		runner := fmt.Sprintf(`
-import { readFileSync } from 'fs';
-import vm from 'vm';
-
-console.log("[runner] Starting test runner...");
-
-let userCode;
-try {
-    userCode = readFileSync('./user.js', 'utf8');
-    console.log("[runner] Loaded user.js");
-} catch (e) {
-    console.log("[runner] Failed to load user.js:", e.message);
-    process.exit(1);
-}
-
-const sandbox = {
-    exports: {},
-    module: { exports: {} },
-    console,
-};
-
-vm.createContext(sandbox);
-
-try {
-    vm.runInContext(userCode, sandbox, { timeout: 1000 });
-    const exports = sandbox.exports;
-    %s
-    console.log("✅ All tests passed!");
-} catch (e) {
-    console.log("❌ Test failed:", e && e.message ? e.message : e);
-    process.exit(1);
-}
-`, testScript)
-		if err := os.WriteFile(runnerPath, []byte(runner), 0644); err != nil {
-			program.Send(runnerOutputMsg{Line: fmt.Sprintf("Failed to write runner.mjs: %v", err)})
-			program.Send(runnerDoneMsg{Err: err})
-			return nil
-		}
-
-		tscCmd := exec.Command("tsc", userPath, typecheckPath, "--target", "es2020", "--module", "commonjs", "--outDir", tmpDir)
+		tscCmd := exec.Command("tsc", typecheckPath, "--target", "es2020", "--module", "commonjs", "--outDir", tmpDir)
 		tscCmd.Dir = tmpDir
 
 		var tscStderrBuf bytes.Buffer
@@ -257,6 +221,43 @@ try {
 			printHelpfulTSCErrors(tscStdoutBuf.String(), typecheckPath, program)
 
 			program.Send(runnerOutputMsg{Line: fmt.Sprintf("[tsc] Compilation failed: %v", err)})
+			program.Send(runnerDoneMsg{Err: err})
+			return nil
+		}
+
+		jsBytes, err := os.ReadFile(filepath.Join(tmpDir, "typecheck.js"))
+		if err != nil { /* handle error */
+		}
+
+		combined := fmt.Sprintf("%s\n\n%s\n", string(jsBytes), ex.TestScript)
+
+		// Write to a single file, say, run.js
+		runPath := filepath.Join(tmpDir, "run.js")
+		os.WriteFile(runPath, []byte(combined), 0644)
+		// Write runner.mjs
+		runnerPath := filepath.Join(tmpDir, "runner.mjs")
+		runner := fmt.Sprintf(`
+import { readFileSync } from "fs";
+import vm from "vm";
+
+const combined = readFileSync("./run.js", "utf8");
+
+// Optionally: set up a basic sandbox (exports/global, etc.)
+const sandbox = { exports: {}, module: { exports: {}}, console };
+const context = vm.createContext(sandbox);
+
+try {
+  vm.runInContext(combined, context, { timeout: 1000 });
+  console.log("✅ All tests passed!")
+} catch (err) {
+  // Print clean error message
+  console.log("❌ Test failed:", err && err.message ? err.message : err);
+  process.exit(1);
+}
+
+`)
+		if err := os.WriteFile(runnerPath, []byte(runner), 0644); err != nil {
+			program.Send(runnerOutputMsg{Line: fmt.Sprintf("Failed to write runner.mjs: %v", err)})
 			program.Send(runnerDoneMsg{Err: err})
 			return nil
 		}
