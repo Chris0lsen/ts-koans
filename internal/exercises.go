@@ -386,29 +386,29 @@ type _Check = Assert<IsType<{ bar?: string }, Parameters<typeof foo>[0]>>;
 			ID:          "union-types",
 			title:       "Union Types",
 			Label:       "",
-			description: "Several types may exist in harmony",
-			StarterCode: `let var: ???
-var = "Hello";
-var = 100;`,
+			description: "Several types may exist in harmony with `|`",
+			StarterCode: `let something: string ??? number;
+something = "Hello";
+something = 100;`,
 			TestScript: `
-if (typeof var !== "number") throw new Error("After assignment, var should be a number");
-var = "world";
-if (typeof var !== "string") throw new Error("After assignment, var should be a string");
+if (typeof something !== "number") throw new Error("After assignment, something should be a number");
+something = "world";
+if (typeof something !== "string") throw new Error("After assignment, something should be a string");
 `,
 			TypeAssertions: `
-// var should be string | number
-type _Check = Assert<IsType<typeof var, string | number>>;
+// something should be string | number
+type _Check = Assert<IsAssignable<typeof something, string | number>>;
 `},
 		{
 			ID:          "union-types-narrowing",
 			title:       "Union Types: Narrowing",
 			Label:       "",
 			description: "One may narrow the union. The compiler will deduce the most specific type.",
-			StarterCode: `function narrow(foo: number | string): true as const {
+			StarterCode: `function narrow(foo: number | string): true {
   if (typeof foo === "string") {
-    return typeof foo === "string";
+    return (typeof foo === "string") as true;
   } else {
-   return typeof foo === ???;
+   return (typeof foo === ???) as true;
   }
 }`,
 			TestScript: `
@@ -423,13 +423,14 @@ type _CheckParam = Assert<IsType<Parameters<typeof narrow>[0], string | number>>
 			ID:          "type-aliases-object-types",
 			title:       "Type Aliases: Object Types",
 			Label:       "",
-			description: "One may define a type as an object",
+			description: "One may define a `type` as an object",
 			StarterCode: `??? MyType = {
   foo: string;
   bar: number;
-}`,
+}
+const val: MyType = { foo: "hi", bar: 123 };  
+`,
 			TestScript: `
-const val: MyType = { foo: "hi", bar: 123 };
 if (val.foo !== "hi") throw new Error("foo property should be 'hi'");
 if (val.bar !== 123) throw new Error("bar property should be 123");
 `,
@@ -467,9 +468,10 @@ type _Check = Assert<IsType<MyTypeOrNumber, MyType | number>>;
 }
 type Monk = Person ??? {
   isMeditating: boolean;
-}`,
+}
+const m: Monk = { name: "Linji", isMeditating: true };  
+`,
 			TestScript: `
-const m: Monk = { name: "Linji", isMeditating: true };
 if (m.name !== "Linji") throw new Error("Monk should have correct name");
 if (!m.isMeditating) throw new Error("Monk should have isMeditating property true");
 `,
@@ -483,10 +485,11 @@ type _Check = Assert<IsType<Monk, Person & { isMeditating: boolean }>>;
 			Label:       "",
 			description: "A type may not change after its creation",
 			StarterCode: `// The below code will not compile.
-// One type's name must change.
 type Constancy = {
   foo: boolean
 }
+
+// Change the name of the second type to make the code compile.
 type Constancy = {
   bar: boolean
 }`,
@@ -496,7 +499,7 @@ type Constancy = {
 `,
 			TypeAssertions: `
 // Only one type Constancy should exist
-type _Check1 = Assert<IsType<Constancy, { foo: boolean } | { bar: boolean }>>;
+type _Check1 = Assert<IsType<Constancy, { foo: boolean }>>;
 `},
 		{
 			ID:          "interfaces",
@@ -506,9 +509,10 @@ type _Check1 = Assert<IsType<Constancy, { foo: boolean } | { bar: boolean }>>;
 			StarterCode: `??? MyInterface {
   foo: string;
   bar: number;
-}`,
-			TestScript: `
+}
 const obj: MyInterface = { foo: "hello", bar: 123 };
+`,
+			TestScript: `
 if (obj.foo !== "hello") throw new Error("foo should be 'hello'");
 if (obj.bar !== 123) throw new Error("bar should be 123");
 `,
@@ -526,29 +530,31 @@ type _Check = Assert<IsType<MyInterface, { foo: string; bar: number }>>;
 }
 interface Monk ??? Person {
   isMeditating: boolean
-}`,
-			TestScript: `
+}
 const m: Monk = { name: "Huineng", isMeditating: true };
+`,
+			TestScript: `
 if (m.name !== "Huineng") throw new Error("Monk should have correct name");
 if (!m.isMeditating) throw new Error("Monk should have isMeditating property true");
 `,
 			TypeAssertions: `
 // Monk should extend Person and add isMeditating: boolean
-type _Check = Assert<IsType<Monk, Person & { isMeditating: boolean }>>;
+type _Check = Assert<IsType<Monk, {name: string, isMeditating: boolean }>>;
 `},
 		{
 			ID:          "interfaces-redefining",
 			title:       "Interfaces: Redefining",
 			Label:       "",
-			description: "An interface can be redefined freely",
+			description: "An interface can be redefined freely, merging the declarations",
 			StarterCode: `interface MyInterface {
   foo: string;
 }
 ??? MyInterface {
   bar: number;
-}`,
-			TestScript: `
+}
 const obj: MyInterface = { foo: "hi", bar: 5 };
+`,
+			TestScript: `
 if (obj.foo !== "hi") throw new Error("foo should be 'hi'");
 if (obj.bar !== 5) throw new Error("bar should be 5");
 `,
@@ -561,13 +567,12 @@ type _Check = Assert<IsType<MyInterface, { foo: string; bar: number }>>;
 			title:       "Tuples",
 			Label:       "",
 			description: "A tuple is an array that knows its shape and size",
-			StarterCode: `function foo(myTuple: [string, ???]): true as const {
-  return typeof myTuple[0] === "string"
-  && typeof myTuple[1] === "number";
+			StarterCode: `function foo(myTuple: [string, ???]): true {
+  return (typeof myTuple[0] === "string"
+  && typeof myTuple[1] === "number") as true;
 }`,
 			TestScript: `
 if (!foo(["a", 1])) throw new Error('foo(["a", 1]) should return true');
-if (foo(["a", "b"] as any)) throw new Error('foo(["a", "b"]) should return false');
 `,
 			TypeAssertions: `
 // myTuple should be a tuple [string, number]
@@ -580,10 +585,11 @@ type _Check = Assert<IsType<Parameters<typeof foo>[0], [string, number]>>;
 			description: "A tuple can be readonly",
 			StarterCode: `function foo(myTuple: ??? [string, number]): void {
   console.log(myTuple[0] + " will always be a string")
-}`,
+}
+const tuple: Readonly<[string, number]> = ["foo", 42] as const;
+`,
 			TestScript: `
 // Should accept a readonly tuple
-const tuple: Readonly<[string, number]> = ["foo", 42] as const;
 foo(tuple);
 // Should error if trying to mutate (compile-time error if parameter is readonly)
 let failed = false;
@@ -601,7 +607,7 @@ type _Check = Assert<IsType<Parameters<typeof foo>[0], Readonly<[string, number]
 			ID:          "promises",
 			title:       "Promises",
 			Label:       "",
-			description: "There exists a special type for functions that return promises",
+			description: "There exists a special `Promise` type for functions that return promises",
 			StarterCode: `async function foo(): ???<number> {
   return 100;
 }`,
@@ -652,14 +658,13 @@ type _Check = Assert<IsType<typeof anything, "anything">>;
 			StarterCode: `type ManyThings = "one" | "another" | ???
 let thing = "a secret third thing"`,
 			TestScript: `
-let t: ManyThings = "one";
-t = "another";
-t = "a secret third thing";
-if (t !== "a secret third thing") throw new Error('t should be "a secret third thing"');
+thing = "another";
+thing = "a secret third thing";
+if (thing !== "a secret third thing") throw new Error('thing should be "a secret third thing"');
 `,
 			TypeAssertions: `
 // ManyThings should include the string "a secret third thing"
-type _Check = Assert<IsType<"a secret third thing", ManyThings>>;
+type _Check = Assert<IsAssignable<"a secret third thing", ManyThings>>;
 `},
 
 		{
@@ -677,7 +682,7 @@ if (n !== 100) throw new Error("n should be 100");
 `,
 			TypeAssertions: `
 // ManyNumbers should include the number 100
-type _Check = Assert<IsType<100, ManyNumbers>>;
+type _Check = Assert<IsAssignable<100, ManyNumbers>>;
 `,
 		},
 		{
@@ -709,8 +714,8 @@ Colors.Blue === ???`,
 if (Colors.Blue !== 2) throw new Error("Colors.Blue should be 2");
 `,
 			TypeAssertions: `
-// Colors.Blue should have the value 2
-type _Check = Assert<IsType<typeof Colors.Blue, number>>;
+// Colors.Blue should have Colors.Blue as its type
+type _Check = Assert<IsType<typeof Colors.Blue, Colors.Blue>>;
 `},
 		{
 			ID:          "enums-string",
@@ -727,8 +732,8 @@ Colors.Blue === ???`,
 if (Colors.Blue !== "BLUE") throw new Error('Colors.Blue should be "BLUE"');
 `,
 			TypeAssertions: `
-// Colors.Blue should have the value "BLUE"
-type _Check = Assert<IsType<typeof Colors.Blue, string>>;
+// Colors.Blue should have Colors.Blue as its type
+type _Check = Assert<IsType<typeof Colors.Blue, Colors.Blue>>;
 `},
 		{
 			ID:          "type-guards-typeof",
@@ -737,6 +742,7 @@ type _Check = Assert<IsType<typeof Colors.Blue, string>>;
 			description: "`typeof` can be used in expressions or in types",
 			StarterCode: `let foo = "foo";
 let bar: ??? foo;
+bar = "bar"
 typeof foo === typeof bar;`,
 			TestScript: `
 if (typeof bar !== "string") throw new Error("bar should be a string");
@@ -751,58 +757,28 @@ type _Check = Assert<IsType<typeof bar, typeof foo>>;
 			title:       "Narrowing: in",
 			Label:       "",
 			description: "`in` can be used to narrow types",
-			StarterCode: `type Person = {
+			StarterCode: `type PersonType = {
   name: string
 }
-type Object = {
+type ObjectType = {
   foo: string
 }
-function typeDecider(thing: Person | Object): string {
-  return "name" ??? thing ? "Person" : "Object";
+function typeDecider(thing: PersonType | ObjectType): string {
+  return "name" ??? thing ? thing.name : thing.foo";
 }`,
 			TestScript: `
-if (typeDecider({ name: "Linji" }) !== "Person") throw new Error('typeDecider({ name: "Linji" }) should return "Person"');
-if (typeDecider({ foo: "bar" }) !== "Object") throw new Error('typeDecider({ foo: "bar" }) should return "Object"');
+if (typeDecider({ name: "Linji" }) !== "Person") throw new Error('typeDecider({ name: "Linji" }) should return "Linji"');
+if (typeDecider({ foo: "bar" }) !== "Object") throw new Error('typeDecider({ foo: "bar" }) should return "bar"');
 `,
 			TypeAssertions: `
 // typeDecider should return "Person" or "Object" as a string
 type _Check = Assert<IsType<ReturnType<typeof typeDecider>, string>>;
 `},
 		{
-			ID:          "narrowing-instanceof",
-			title:       "Narrowing: instanceof",
-			Label:       "",
-			description: "`instanceof` can be used to narrow types",
-			StarterCode: `type Person = {
-  name: string
-}
-type Object = {
-  foo: string
-}
-function typeDecider(thing: Person | Object): string {
-  return "name" ??? Person ? "Person" : "Object";
-}`,
-			TestScript: `
-// instanceof can't be used directly with plain object types, so let's provide classes:
-class PersonClass { constructor(public name: string) {} }
-class ObjectClass { constructor(public foo: string) {} }
-
-function classTypeDecider(thing: PersonClass | ObjectClass): string {
-  return thing instanceof PersonClass ? "Person" : "Object";
-}
-
-if (classTypeDecider(new PersonClass("Linji")) !== "Person") throw new Error('classTypeDecider(new PersonClass("Linji")) should return "Person"');
-if (classTypeDecider(new ObjectClass("bar")) !== "Object") throw new Error('classTypeDecider(new ObjectClass("bar")) should return "Object"');
-`,
-			TypeAssertions: `
-// classTypeDecider should return "Person" or "Object" as a string
-type _Check = Assert<IsType<ReturnType<typeof classTypeDecider>, string>>;
-`},
-		{
 			ID:          "type-predicates-is",
 			title:       "Type Predicates: is",
 			Label:       "",
-			description: "A type predicate will tell tthe compiler about the type of a variable",
+			description: "A type predicate will tell the compiler about the type of a variable",
 			StarterCode: `type Monk = "Linji" | "Zhaozhou"
 function isPerson(value: unknown): value ??? Monk {
   return value === "Linji" || value === "Zhaozhou"
@@ -844,7 +820,7 @@ type _Assert = Assert<IsType<ReturnType<typeof fail>, never>>;
 			ID:          "index-signatures",
 			title:       "Index Signatures",
 			Label:       "",
-			description: `Index signatures let you type objects with unknown keys, but known value types.`,
+			description: "Index signatures let you type objects with unknown `key`s, but known value types.",
 			StarterCode: `interface PersonAgeMap {
     [???: string]: number
 }
@@ -867,7 +843,7 @@ type _KeyCheck = Assert<IsNotType<keyof PersonAgeMap, number>>;
 			ID:          "index-signature-unknown",
 			title:       "Index Signatures & `unknown`",
 			Label:       "",
-			description: "The unknown type is a safer alternative to any.",
+			description: "The `unknown` type is a safer alternative to any.",
 			StarterCode: `interface AnyData {
   [key: string]: ???;
 }
@@ -909,8 +885,8 @@ if (user.age !== 256) throw new Error("user.age should be 256");
 `,
 			TypeAssertions: `
 // Should type-check if user is both HasName and HasAge
-type _AssertName = Assert<IsType<typeof user, HasName>>;
-type _AssertAge = Assert<IsType<typeof user, HasAge>>;
+type _AssertName = Assert<IsAssignable<typeof user, HasName>>;
+type _AssertAge = Assert<IsAssignable<typeof user, HasAge>>;
 `,
 		},
 		{
@@ -938,7 +914,7 @@ type _Str = Assert<IsType<typeof strBox, Box<string>>>;
 			ID:          "keyof",
 			title:       "The keyof Keyword",
 			Label:       "",
-			description: `keyof returns a union of `,
+			description: `keyof returns a union of the keys of the given type`,
 			StarterCode: `type User = {
     name: string;
     age: number;
@@ -1002,7 +978,7 @@ type _Check = Assert<IsType<BooleanFlags, { id: boolean; username: boolean; emai
 }
 
 type RequiredUser = {
-    ??? [K in keyof MaybeUser]: MaybeUser[K]
+    [K in keyof MaybeUser]???: MaybeUser[K]
 }
 
 const u: RequiredUser = {
@@ -1045,8 +1021,8 @@ user.id = 2;
 if (user.id !== 2) throw new Error("user.id should be mutable!");
 `,
 			TypeAssertions: `
-// Should not be readonly; use -readonly tto remove the readonly property
-type _Check = Assert<IsNotType<WritableUser["id"], Readonly<number>>>;
+// Should not be readonly; use -readonly to remove the readonly property
+type _Check = Assert<IsNotReadonly<WritableUser, "id">>;
 `,
 		},
 		{
@@ -1092,7 +1068,7 @@ type FullUser = ???
 const u: FullUser = {
     id: 100,
     username: "Yun-men",
-    email: "yun-men@suemru.com"
+    email: "yun-men@sumeru.com"
 }`,
 			TestScript: `
 if (u.id !== 100) throw new Error("id should be 100");
@@ -1136,7 +1112,7 @@ type _Check2 = Assert<IsType<UserPreview, { id: number; username: string }>>;
 
 		{
 			ID:          "utility-types-omit",
-			title:       "Utility Types: Omit`",
+			title:       "Utility Types: `Omit`",
 			Label:       "",
 			description: "Sometimes you must omit, to create something new",
 			StarterCode: `type User = {
@@ -1155,7 +1131,7 @@ const user: PublicUser = {
 }`,
 			TestScript: `
 if (user.username !== "Dongshan") throw new Error("username should be 'Dongshan'");
-if (user.email !== "Dongshan@example.com") throw new Error("email should be 'Dongshan@shouchu.com'");
+if (user.email !== "Dongshan@shouchu.com") throw new Error("email should be 'Dongshan@shouchu.com'");
 `,
 			TypeAssertions: `
 // Should not allow password
