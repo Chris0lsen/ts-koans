@@ -495,7 +495,7 @@ func (m model) View() string {
 	case menu:
 		return m.list.View() + "\n\n[enter] Start | [q] Quit"
 	case editor:
-		header := lipgloss.NewStyle().Bold(true).Padding(2,0,0,4).Render(m.exercises[m.selected].Title())
+		header := lipgloss.NewStyle().Bold(true).Padding(2, 0, 0, 4).Render(m.exercises[m.selected].Title())
 		desc := m.exercises[m.selected].Description()
 		editor := m.textarea.View()
 		output := m.renderOutputPanel()
