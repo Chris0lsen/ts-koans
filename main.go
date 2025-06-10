@@ -453,7 +453,7 @@ var outputStyle = lipgloss.NewStyle().
 	MarginTop(1).
 	MarginLeft(1).
 	MarginRight(1).
-	Width(80).
+	Width(60).
 	Faint(true)
 
 func (m model) renderOutputPanel() string {
@@ -477,7 +477,7 @@ func (m model) renderOutputPanel() string {
 	}
 
 	// Style for assertion lines
-	assertionStyle := lipgloss.NewStyle().Foreground(lipgloss.Color("9")).Bold(true)
+	assertionStyle := lipgloss.NewStyle().Foreground(lipgloss.Color("12")).Bold(true)
 	renderedLines := make([]string, len(lines))
 	for i, msg := range lines {
 		if msg.Assertion {
@@ -495,7 +495,7 @@ func (m model) View() string {
 	case menu:
 		return m.list.View() + "\n\n[enter] Start | [q] Quit"
 	case editor:
-		header := lipgloss.NewStyle().Bold(true).Render(m.exercises[m.selected].Title())
+		header := lipgloss.NewStyle().Bold(true).Padding(2,0,0,4).Render(m.exercises[m.selected].Title())
 		desc := m.exercises[m.selected].Description()
 		editor := m.textarea.View()
 		output := m.renderOutputPanel()
