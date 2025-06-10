@@ -57,7 +57,7 @@ type _Check = Assert<IsType<typeof handsClapping, number>>;
 			title:       "Primitives: boolean",
 			Label:       "",
 			description: "An entity can have the type `boolean`",
-			StarterCode: `const nature: ??? = false;`,
+			StarterCode: `const nature: ??? = Boolean(false);`,
 			TestScript: `
 if (typeof nature !== "boolean") throw new Error("nature should be a boolean");
 if (nature !== false) throw new Error("nature should be false");
@@ -84,10 +84,10 @@ type _Check = Assert<IsType<typeof tremendous, bigint>>;
 			ID:          "primitives-symbol",
 			title:       "Primitives: Symbol",
 			Label:       "",
-			description: "A unique entity can be created with the special function `Symbol()`",
+			description: "A unique entity can be created with the special function `Symbol()`, and its type is `symbol`.",
 			StarterCode: `// A Symbol is truly unique
-const theOne = ???("Linji"); 
-const theOnly = ???("Linji");
+const theOne: ???= Symbol("Linji"); 
+const theOnly: ??? = Symbol("Linji");
 theOne !== theOnly`,
 			TestScript: `
 if (typeof theOne !== "symbol") throw new Error("theOne should be a symbol");
@@ -136,15 +136,6 @@ type _Check = Assert<IsType<typeof anArray, Array<string>>>;
 			description: "A readonly array may never change",
 			StarterCode: `let aReadonlyArray: ???<string> = ["steadfast", "unchanging"];`,
 			TestScript: `
-// Try to mutate the array
-let errorCaught = false;
-try {
-    // @ts-expect-error
-    aReadonlyArray.push("mutable");
-} catch {
-    errorCaught = true;
-}
-if ("push" in aReadonlyArray && !errorCaught) throw new Error("Should not be able to mutate a readonly array");
 if (aReadonlyArray.length !== 2) throw new Error("aReadonlyArray should remain length 2");
 if (aReadonlyArray[0] !== "steadfast" || aReadonlyArray[1] !== "unchanging") throw new Error("Elements should be unchanged");
 `,
@@ -348,7 +339,7 @@ type _Check = Assert<IsType<Parameters<typeof foo>[0], { bar: string; baz: strin
 			title:       "Object Types: readonly",
 			Label:       "",
 			description: "A function can accept an object with immutable properties",
-			StarterCode: `function foo(value: {bar: string, ??? baz: number}): void {
+			StarterCode: `function foo(value: {bar: string, ??? baz: string}): void {
   value.bar = "I can change";
   value.baz !== "I cannot";
 }`,
@@ -366,31 +357,7 @@ if (!("baz" in obj)) throw new Error("obj should have baz property");
 `,
 			TypeAssertions: `
 // 'baz' should be readonly
-type _Check = Assert<IsType<{ readonly baz: number }, Parameters<typeof foo>[0]>>;
-`},
-		{
-			ID:          "object-types-readonly-object",
-			title:       "Object Types: readonly Object",
-			Label:       "",
-			description: "A function can accept an unchanging object",
-			StarterCode: `function foo(value: ??? {bar: string, baz: number}): void {
-  console.log(value.bar.repeat(value.baz);
-}`,
-			TestScript: `
-// Should accept a fully readonly object
-const obj = { bar: "a", baz: 3 } as const;
-foo(obj);
-// Try to mutate (should error at compile time if value is readonly)
-let failed = false;
-try {
-  // @ts-expect-error
-  obj.bar = "changed";
-} catch { failed = true; }
-if (!("bar" in obj) || !("baz" in obj)) throw new Error("Object should have bar and baz");
-`,
-			TypeAssertions: `
-// value should be a readonly object with bar and baz
-type _Check = Assert<IsType<Readonly<{ bar: string; baz: number }>, Parameters<typeof foo>[0]>>;
+type _Check = Assert<IsType<{ bar: string, readonly baz: string }, Parameters<typeof foo>[0]>>;
 `},
 		{
 			ID:          "optional-properties",
@@ -398,10 +365,13 @@ type _Check = Assert<IsType<Readonly<{ bar: string; baz: number }>, Parameters<t
 			Label:       "",
 			description: "A function may accept questionable properties",
 			StarterCode: `// Let foo accept an optional property called bar
-function foo(value: {???: string}): true as const {
-  let myBar = value.bar
-  return typeof myBar === "string" || "undefined";
-}           `,
+function foo(value: { ???: string }): boolean {
+  // bar might be missing!
+  if ("bar" in value) {
+    return typeof value.bar === "string";
+  }
+  return true; // If bar is missing, that's ok
+}`,
 			TestScript: `
 // Should allow missing bar
 if (foo({}) !== true) throw new Error("foo({}) should return true");
