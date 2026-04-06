@@ -64,36 +64,36 @@ var errorLinePattern = regexp.MustCompile(`typecheck\.ts\((\d+),\d+\): error`)
 
 var (
 	headerStyle = lipgloss.NewStyle().
-		Bold(true).
-		PaddingTop(2).PaddingLeft(4)
+			Bold(true).
+			PaddingTop(2).PaddingLeft(4)
 
 	descStyle = lipgloss.NewStyle().
-		PaddingTop(0).PaddingBottom(1).PaddingLeft(4)
+			PaddingTop(0).PaddingBottom(1).PaddingLeft(4)
 
 	editorStyle = lipgloss.NewStyle().
-		Border(lipgloss.NormalBorder()).
-		Padding(0, 1).
-		MarginTop(1).
-		MarginLeft(4)
+			Border(lipgloss.NormalBorder()).
+			Padding(0, 1).
+			MarginTop(1).
+			MarginLeft(4)
 
 	outputStyle = lipgloss.NewStyle().
-		Border(lipgloss.NormalBorder()).
-		Padding(0, 1).
-		MarginTop(1).
-		MarginLeft(4).
-		Faint(true)
+			Border(lipgloss.NormalBorder()).
+			Padding(0, 1).
+			MarginTop(1).
+			MarginLeft(4).
+			Faint(true)
 
 	debugStyle = lipgloss.NewStyle().
-		Border(lipgloss.NormalBorder()).
-		Padding(0, 1).
-		MarginTop(1).
-		MarginLeft(4).
-		Faint(true).
-		Foreground(lipgloss.Color("8"))
+			Border(lipgloss.NormalBorder()).
+			Padding(0, 1).
+			MarginTop(1).
+			MarginLeft(4).
+			Faint(true).
+			Foreground(lipgloss.Color("8"))
 
 	helpStyle = lipgloss.NewStyle().
-		MarginTop(1).
-		PaddingLeft(4)
+			MarginTop(1).
+			PaddingLeft(4)
 )
 
 func printHelpfulTSCErrors(tscOutput, harnessPath string, p *tea.Program) {
@@ -126,6 +126,40 @@ func (m *model) appendDebug(msg string) {
 			m.debugLog = m.debugLog[len(m.debugLog)-100:]
 		}
 	}
+}
+
+func (m *model) recalcEditorHeight() {
+	if m.width == 0 || m.height == 0 {
+		return
+	}
+	header := headerStyle.Render(m.exercises[m.selected].Title())
+	desc := descStyle.Render(m.exercises[m.selected].Description())
+
+	debugPanelHeight := 0
+	if m.debugMode {
+		debugPanelHeight = lipgloss.Height(debugStyle.Copy().Width(m.width - 8).Render(strings.Repeat("\n", 4)))
+	}
+
+	help := helpStyle.Render("[esc] Back | [F5] Run | [shift + ← / → ] Prev/Next Exercise")
+
+	fixedHeight := lipgloss.Height(header) +
+		lipgloss.Height(desc) +
+		debugPanelHeight +
+		lipgloss.Height(help)
+
+	panelChrome := 8
+	available := m.height - fixedHeight - panelChrome
+
+	maxOutput := 10
+	minEditor := 3
+	outputHeight := maxOutput
+	editorHeight := available - outputHeight
+	if editorHeight < minEditor {
+		editorHeight = minEditor
+	}
+
+	m.textarea.SetWidth(m.width - 8)
+	m.textarea.SetHeight(editorHeight)
 }
 
 func makeListItems(exs []internal.Exercise, completed map[int]bool) []list.Item {
@@ -281,7 +315,7 @@ type IsAssignable<A, B> = A extends B ? true : false;
 		os.WriteFile(runPath, []byte(combined), 0644)
 		// Write runner.mjs
 		runnerPath := filepath.Join(tmpDir, "runner.mjs")
-		runner := fmt.Sprintf(`
+		runner := `
 import { readFileSync } from "fs";
 import vm from "vm";
 
@@ -300,7 +334,7 @@ try {
   process.exit(1);
 }
 
-`)
+`
 		if err := os.WriteFile(runnerPath, []byte(runner), 0644); err != nil {
 			program.Send(runnerOutputMsg{Line: fmt.Sprintf("Failed to write runner.mjs: %v", err)})
 			program.Send(runnerDoneMsg{Err: err})
@@ -381,6 +415,7 @@ func (m model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 				}
 				m.textarea.Focus()
 				m.state = editor
+				m.recalcEditorHeight()
 			}
 		}
 		var cmd tea.Cmd
@@ -394,6 +429,7 @@ func (m model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 			if len(m.outputLines) > 100 {
 				m.outputLines = m.outputLines[len(m.outputLines)-100:]
 			}
+			m.recalcEditorHeight()
 
 		case runnerDebugMsg:
 			if m.debugMode {
@@ -404,6 +440,7 @@ func (m model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 
 		case runnerDoneMsg:
 			m.running = false
+			m.recalcEditorHeight()
 
 			output := outputLinesToString(m.outputLines)
 			if strings.Contains(output, "✅") {
@@ -415,18 +452,12 @@ func (m model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 				internal.SaveState(m.persistentState)
 			}
 			return m, nil
-case tea.WindowSizeMsg:
-    m.width = msg.Width
-    m.height = msg.Height
-    editorWidth := m.width - 8
-    if editorWidth < 10 {
-        editorWidth = 10
-    }
-    m.textarea.SetWidth(editorWidth)
-    // Optionally: set textarea to minimum height for now
-    m.textarea.SetHeight(3)
-    m.textarea.SetCursor(0)
-    return m, nil
+		case tea.WindowSizeMsg:
+			m.width = msg.Width
+			m.height = msg.Height
+			m.recalcEditorHeight()
+			m.textarea.SetCursor(0)
+			return m, nil
 		case tea.KeyMsg:
 			switch msg.String() {
 			case "esc":
@@ -447,25 +478,48 @@ case tea.WindowSizeMsg:
 				testScript := m.exercises[m.selected].TestScript
 				m.outputLines = nil
 				m.running = true
-				return m, runExerciseStreamed(userCode, testScript, m.program, m.exercises[m.selected])
+				m.recalcEditorHeight()
+				return m, tea.Batch(m.spinner.Tick, runExerciseStreamed(userCode, testScript, m.program, m.exercises[m.selected]))
+			case "shift+right":
+				m.persistentState.SelectedIndex = m.selected
+				internal.SaveState(m.persistentState)
+				i := (m.selected + 1) % len(m.exercises)
+				m.selected = i
+				selectedEx := m.exercises[i]
+				if code, ok := m.persistentState.Solutions[i]; ok && code != "" {
+					m.textarea.SetValue(code)
+				} else {
+					m.textarea.SetValue(selectedEx.StarterCode)
+				}
+				return m, nil
+			case "shift+left":
+				m.persistentState.SelectedIndex = m.selected
+				internal.SaveState(m.persistentState)
+				i := (m.selected - 1 + len(m.exercises)) % len(m.exercises)
+				m.selected = i
+				selectedEx := m.exercises[i]
+				if code, ok := m.persistentState.Solutions[i]; ok && code != "" {
+					m.textarea.SetValue(code)
+				} else {
+					m.textarea.SetValue(selectedEx.StarterCode)
+				}
+				return m, nil
 			}
+		}
+		if m.running {
+			var spinCmd tea.Cmd
+			m.spinner, spinCmd = m.spinner.Update(msg)
+			return m, spinCmd
 		}
 		var cmd tea.Cmd
 		m.textarea, cmd = m.textarea.Update(msg)
 		return m, cmd
 	}
-
-	if m.running {
-		var spinCmd tea.Cmd
-		m.spinner, spinCmd = m.spinner.Update(msg)
-		return m, spinCmd
-	}
 	return m, nil
 }
 
-func (m model) renderOutputPanel() string {
-	boxHeight := 10
-	style := outputStyle.Copy().Width(m.width-8) // match editor panel width
+func (m model) renderOutputPanel(boxHeight int) string {
+	style := outputStyle.Copy().Width(m.width - 8) // match editor panel width
 
 	if m.running {
 		spin := m.spinner.View()
@@ -473,7 +527,7 @@ func (m model) renderOutputPanel() string {
 		for len(lines) < boxHeight {
 			lines = append(lines, "")
 		}
-		return outputStyle.Render(strings.Join(lines, "\n"))
+		return style.Render(strings.Join(lines, "\n"))
 	}
 
 	lines := m.outputLines
@@ -495,62 +549,72 @@ func (m model) renderOutputPanel() string {
 		}
 	}
 
-	return style.Copy().Width(m.width).Render(strings.Join(renderedLines, "\n"))
+	return style.Render(strings.Join(renderedLines, "\n"))
 }
 
 func (m model) View() string {
-    switch m.state {
-    case menu:
-        return m.list.View() + "\n\n[enter] Start | [q] Quit"
-    case editor:
-        header := headerStyle.Render(m.exercises[m.selected].Title())
-        desc := descStyle.Render(m.exercises[m.selected].Description())
-        output := m.renderOutputPanel()
+	switch m.state {
+	case menu:
+		return m.list.View() + "\n\n[enter] Start | [q] Quit | [ ← / → ] Prev/Next Page"
+	case editor:
+		header := headerStyle.Render(m.exercises[m.selected].Title())
+		desc := descStyle.Render(m.exercises[m.selected].Description())
 
-        debugPanel := ""
-        debugPanelHeight := 0
-        if m.debugMode {
-            debugPanelHeight = 5
-            n := len(m.debugLog)
-            start := 0
-            if n > debugPanelHeight {
-                start = n - debugPanelHeight
-            }
-            logs := m.debugLog[start:]
-            debugPanel = debugStyle.Copy().Width(m.width-8).Render(strings.Join(logs, "\n"))
-        }
+		debugPanel := ""
+		if m.debugMode {
+			debugPanelHeight := 5
+			n := len(m.debugLog)
+			start := 0
+			if n > debugPanelHeight {
+				start = n - debugPanelHeight
+			}
+			logs := m.debugLog[start:]
+			debugPanel = debugStyle.Copy().Width(m.width - 8).Render(strings.Join(logs, "\n"))
+		}
 
-        help := helpStyle.Render("[esc] Back | [F5] Run")
+		help := helpStyle.Render("[esc] Back | [F5] Run | [shift + ← / → ] Prev/Next Exercise")
 
-        // Calculate dynamic editor height
-        usedHeight :=
-            lipgloss.Height(header) +
-            lipgloss.Height(desc) +
-            lipgloss.Height(output) +
-            lipgloss.Height(debugPanel) +
-            lipgloss.Height(help)
+		// Fixed overhead: header + desc + help + debug + border/margin for editor and output (~4 lines each)
+		fixedHeight := lipgloss.Height(header) +
+			lipgloss.Height(desc) +
+			lipgloss.Height(debugPanel) +
+			lipgloss.Height(help)
 
-        editorHeight := m.height - usedHeight
-        if editorHeight < 3 {
-            editorHeight = 3
-        }
+		// Borders/margins add ~4 lines per boxed panel (editor + output)
+		panelChrome := 8
+		available := m.height - fixedHeight - panelChrome
 
-        // Set editor size
-        editor := editorStyle.Copy().Width(m.width-8).Height(editorHeight).Render(m.textarea.View())
+		// Split available space: editor gets priority, output gets the rest (up to 10)
+		minEditor := 3
+		maxOutput := 10
+		outputHeight := maxOutput
+		editorHeight := available - outputHeight
+		if editorHeight < minEditor {
+			editorHeight = minEditor
+			outputHeight = available - editorHeight
+			if outputHeight < 3 {
+				outputHeight = 3
+			}
+		}
+		m.appendDebug(fmt.Sprintf("editorHeight: %d, outputHeight: %d, available: %d", editorHeight, outputHeight, available))
 
-        // Compose
-        panels := []string{header, desc, editor, output}
-        if m.debugMode {
-            panels = append(panels, debugPanel)
-        }
-        panels = append(panels, help)
+		output := m.renderOutputPanel(outputHeight)
 
-        return lipgloss.JoinVertical(lipgloss.Left, panels...)
-    default:
-        return "Loading..."
-    }
+		// Set editor size
+		editor := editorStyle.Copy().Width(m.width - 8).Height(editorHeight).Render(m.textarea.View())
+
+		// Compose
+		panels := []string{header, desc, editor, output}
+		if m.debugMode {
+			panels = append(panels, debugPanel)
+		}
+		panels = append(panels, help)
+
+		return lipgloss.JoinVertical(lipgloss.Left, panels...)
+	default:
+		return "Loading..."
+	}
 }
-
 
 func nodeAvailable() bool {
 	cmd := exec.Command("node", "--version")

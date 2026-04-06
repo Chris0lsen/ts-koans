@@ -7,11 +7,13 @@ Inspired by [Elixir Koans](https://github.com/elixirkoans/elixir-koans), ts-koan
  - [Node.js](https://nodejs.org/en/download/) >= 20
  - [TypeScript](https://www.typescriptlang.org/docs/handbook/typescript-tooling-in-5-minutes.html)
 
-Note that if you use a version manager such as [nvm](https://github.com/nvm-sh/nvm), [n](https://github.com/tj/n) or (my favorite) [asdf](https://asdf-vm.com/), your `tsc` installation might not be globally available. Please make sure they're in your `$PATH` before running ts-koans.
+Note that if you use a version manager such as [nvm](https://github.com/nvm-sh/nvm), [n](https://github.com/tj/n), [asdf](https://asdf-vm.com/) or [mise](https://mise.jdx.dev/), your `tsc` installation might not be globally available. Please make sure they're in your `$PATH` before running ts-koans.
 
 ## Running
 
 Download the latest release for your architecture, then extract and run `tskoans` from your favorite terminal emulator.
+
+Alternatively, you may clone this repo and run `go run main.go` from the root.
 
 ## Problems?
 
