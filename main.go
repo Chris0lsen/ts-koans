@@ -48,11 +48,11 @@ type model struct {
 	persistentState internal.PersistentState
 	debugMode       bool
 	debugLog        []string
+	start           int
+	gutterWidth     int
+	editorTopY      int
 }
 
-type exerciseResultMsg struct {
-	output string
-}
 type setProgramMsg struct{ program *tea.Program }
 
 type runnerDebugMsg struct{ Line string }
@@ -244,16 +244,6 @@ func (m model) renderHighlightedCode(viewHeight int) string {
 	curRow := m.textarea.Line()
 	curCol := m.textarea.LineInfo().CharOffset
 
-	// Simple viewport scrolling: if cursor would be below the visible area,
-	// shift the start line so cursor is on the last visible row
-	start := 0
-	if curRow >= start+viewHeight {
-		start = curRow - viewHeight + 1
-	}
-	if totalLines <= viewHeight {
-		start = 0
-	}
-
 	// Line number gutter width — at least 3 chars so it doesn't jump around
 	numWidth := len(fmt.Sprintf("%d", totalLines))
 	if numWidth < 3 {
@@ -262,7 +252,7 @@ func (m model) renderHighlightedCode(viewHeight int) string {
 
 	var lines []string
 	for i := 0; i < viewHeight; i++ {
-		idx := start + i
+		idx := m.start + i
 		if idx < totalLines {
 			isCursor := idx == curRow
 
@@ -321,6 +311,7 @@ func (m *model) recalcEditorHeight() {
 	}
 	header := headerStyle.Render(m.exercises[m.selected].Title())
 	desc := descStyle.Render(m.exercises[m.selected].Description())
+	m.editorTopY = lipgloss.Height(header) + lipgloss.Height(desc) + 2 // +2 for editor margin
 
 	debugPanelHeight := 0
 	if m.debugMode {
@@ -580,6 +571,21 @@ func (m model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 			m.height = msg.Height
 			m.list.SetSize(msg.Width, msg.Height)
 
+		case tea.MouseMsg:
+			// Handle mouse click to select an exercise
+			if msg.Action == tea.MouseActionPress && msg.Button == tea.MouseButtonLeft {
+				listTopY := 1
+				itemHeight := 3
+				slot := (msg.Y - listTopY) / itemHeight
+				page := m.list.Paginator.Page
+				perPage := m.list.Paginator.PerPage
+				idx := page*perPage + slot
+				if idx >= 0 && idx < len(m.exercises) {
+					m.list.Select(idx)
+					return m, nil
+				}
+			}
+
 		case tea.KeyMsg:
 			switch msg.String() {
 			case "q", "ctrl+c":
@@ -645,6 +651,50 @@ func (m model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 			m.recalcEditorHeight()
 			m.textarea.SetCursor(0)
 			return m, nil
+		case tea.MouseMsg:
+			// Click to move cursor
+			if msg.Action == tea.MouseActionPress && msg.Button == tea.MouseButtonLeft {
+				editorBottomY := m.editorTopY + m.textarea.Height() - 1
+				editorLeftX := 6 // MarginLeft(4) + line number gutter (2+ chars)
+				contentLeftX := editorLeftX + m.gutterWidth
+
+				// Get code coordinates
+				targetLine := msg.Y - m.editorTopY + m.start
+				targetCol := msg.X - contentLeftX
+
+				// Bounds checks (ignore clicks outside editor)
+				totalLines := len(strings.Split(m.textarea.Value(), "\n"))
+				if msg.Y < m.editorTopY || msg.Y >= editorBottomY || msg.X < contentLeftX || targetLine >= totalLines {
+					return m, nil
+				}
+				if targetCol < 0 {
+					targetCol = 0
+				}
+
+				// Move cursor in textarea
+				currentLine := m.textarea.Line()
+				for currentLine < targetLine {
+					m.textarea, _ = m.textarea.Update(tea.KeyMsg{Type: tea.KeyDown})
+					currentLine++
+				}
+				for currentLine > targetLine {
+					m.textarea, _ = m.textarea.Update(tea.KeyMsg{Type: tea.KeyUp})
+					currentLine--
+				}
+
+				// Clamp col to len of target line, set col
+				lines := strings.Split(m.textarea.Value(), "\n")
+				lineLen := len([]rune(lines[targetLine]))
+				if targetCol > lineLen {
+					targetCol = lineLen
+				}
+
+				m.textarea.SetCursor(targetCol)
+
+				m.calculateCursorCoordinates()
+
+				return m, nil
+			}
 		case tea.KeyMsg:
 			switch msg.String() {
 			case "esc":
@@ -700,9 +750,31 @@ func (m model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		}
 		var cmd tea.Cmd
 		m.textarea, cmd = m.textarea.Update(msg)
+		// Calculate cursor start
+		m.calculateCursorCoordinates()
 		return m, cmd
 	}
 	return m, nil
+}
+
+func (m *model) calculateCursorCoordinates() {
+	curRow := m.textarea.Line()
+	viewHeight := m.textarea.Height()
+	totalLines := len(strings.Split(m.textarea.Value(), "\n"))
+
+	m.start = 0
+	if curRow >= m.start+viewHeight {
+		m.start = curRow - viewHeight + 1
+	}
+	if totalLines <= viewHeight {
+		m.start = 0
+	}
+
+	numWidth := len(fmt.Sprintf("%d", totalLines))
+	if numWidth < 3 {
+		numWidth = 3
+	}
+	m.gutterWidth = numWidth + 1 // line numbers + space
 }
 
 func (m model) renderOutputPanel(boxHeight int) string {
@@ -742,7 +814,7 @@ func (m model) renderOutputPanel(boxHeight int) string {
 func (m model) View() string {
 	switch m.state {
 	case menu:
-		return m.list.View() + "\n\n[enter] Start | [q] Quit | [ ← / → ] Prev/Next Page"
+		return m.list.View() + "\n\n[enter] Start | [q] Quit | [ ← / → ] Prev/Next Page | [/] Filter"
 	case editor:
 		header := headerStyle.Render(m.exercises[m.selected].Title())
 		desc := descStyle.Render(m.exercises[m.selected].Description())
@@ -837,7 +909,7 @@ func main() {
 	m.debugMode = *debug
 	m.debugLog = append(m.debugLog, "Debug panel is working!")
 
-	p := tea.NewProgram(m, tea.WithAltScreen())
+	p := tea.NewProgram(m, tea.WithAltScreen(), tea.WithMouseCellMotion())
 	go func() {
 		p.Send(setProgramMsg{program: p})
 	}()
