@@ -14,9 +14,6 @@ import (
 	"strings"
 	"time"
 
-	"github.com/alecthomas/chroma/v2"
-	"github.com/alecthomas/chroma/v2/lexers"
-	"github.com/alecthomas/chroma/v2/styles"
 	"github.com/charmbracelet/bubbles/list"
 	"github.com/charmbracelet/bubbles/spinner"
 	"github.com/charmbracelet/bubbles/textarea"
@@ -31,6 +28,25 @@ type state int
 const (
 	menu state = iota
 	editor
+)
+
+// Layout constants
+const (
+	panelHorizChrome = 8 // Total horizontal chrome: MarginLeft(4) + Border(1) + Padding(1) each side
+	panelVertChrome  = 8 // Vertical chrome for editor + output panels (borders, margins)
+	editorLeftX      = 6 // MarginLeft(4) + Border(1) + Padding(1)
+	editorMarginTop  = 2 // Editor MarginTop(1) + top border line
+
+	maxOutputHeight = 10
+	minEditorHeight = 3
+	minOutputHeight = 3
+	debugPanelLines = 5
+	minGutterWidth  = 3
+
+	listItemHeight = 3 // Default delegate Height(2) + Spacing(1)
+
+	tabWidth       = 2
+	maxBufferLines = 100 // Max retained output/debug lines
 )
 
 type model struct {
@@ -51,6 +67,8 @@ type model struct {
 	start           int
 	gutterWidth     int
 	editorTopY      int
+	editorHeight    int
+	outputHeight    int
 }
 
 type setProgramMsg struct{ program *tea.Program }
@@ -61,9 +79,6 @@ type runnerOutputMsg struct {
 	Assertion bool
 }
 type runnerDoneMsg struct{ Err error }
-
-// errorLinePattern matches e.g. "typecheck.ts(10,44): error ..."
-var errorLinePattern = regexp.MustCompile(`typecheck\.ts\((\d+),\d+\): error`)
 
 var (
 	headerStyle = lipgloss.NewStyle().
@@ -100,183 +115,14 @@ var (
 
 	lineNumStyle       = lipgloss.NewStyle().Foreground(lipgloss.Color("240"))
 	cursorLineNumStyle = lipgloss.NewStyle().Foreground(lipgloss.Color("252"))
+	assertionStyle     = lipgloss.NewStyle().Foreground(lipgloss.Color("12")).Bold(true)
 )
-
-// --- Syntax highlighting ---
-//
-// The textarea widget still handles all editing (keystrokes, cursor, buffer),
-// but we replace its View() output with our own highlighted rendering.
-
-var (
-	// chromaTheme provides the color palette for syntax tokens (keywords, strings, etc.)
-	chromaTheme = styles.Get("monokai")
-
-	// tsLexer is the TypeScript tokenizer, initialized once at startup.
-	// chroma.Coalesce merges adjacent tokens of the same type for efficiency.
-	// IIFE to handle potential nil lexer gracefully.
-	// the ts lexer should never be nil in reality, but... whatever
-	tsLexer = func() chroma.Lexer {
-		l := lexers.Get("typescript")
-		if l == nil {
-			l = lexers.Fallback
-		}
-		return chroma.Coalesce(l)
-	}()
-)
-
-// styledSpan is a fragment of text on a single line with a single style.
-// A line of code is represented as []styledSpan — one span per token/color change.
-type styledSpan struct {
-	text  string
-	style lipgloss.Style
-}
-
-// chromaToLipgloss converts a chroma style entry (color, bold, italic)
-// into a lipgloss style that the terminal can render.
-func chromaToLipgloss(entry chroma.StyleEntry) lipgloss.Style {
-	s := lipgloss.NewStyle()
-	if entry.Colour.IsSet() {
-		s = s.Foreground(lipgloss.Color(entry.Colour.String()))
-	}
-	if entry.Bold == chroma.Yes {
-		s = s.Bold(true)
-	}
-	if entry.Italic == chroma.Yes {
-		s = s.Italic(true)
-	}
-	return s
-}
-
-// highlightLines tokenizes the full code string and returns a 2D slice:
-// result[lineIndex] = []styledSpan for that line.
-//
-// Chroma produces a flat stream of tokens — some tokens span multiple lines
-// (e.g. multi-line strings). We split those on "\n" to get per-line spans.
-func highlightLines(code string) [][]styledSpan {
-	iter, err := tsLexer.Tokenise(nil, code)
-	if err != nil {
-		// Fallback: no highlighting, just plain text per line
-		raw := strings.Split(code, "\n")
-		result := make([][]styledSpan, len(raw))
-		for i, l := range raw {
-			result[i] = []styledSpan{{text: l, style: lipgloss.NewStyle()}}
-		}
-		return result
-	}
-
-	var result [][]styledSpan
-	var cur []styledSpan // spans accumulated for the current line
-
-	for _, tok := range iter.Tokens() {
-		s := chromaToLipgloss(chromaTheme.Get(tok.Type))
-
-		// A single token may contain newlines (e.g. template literals).
-		// Split it so each piece lands on the correct output line.
-		parts := strings.Split(tok.Value, "\n")
-		for i, part := range parts {
-			if i > 0 {
-				// Newline boundary — flush current line and start a new one
-				result = append(result, cur)
-				cur = nil
-			}
-			if part != "" {
-				cur = append(cur, styledSpan{text: part, style: s})
-			}
-		}
-	}
-	// Don't forget the last line (no trailing newline to trigger a flush)
-	result = append(result, cur)
-	return result
-}
-
-// renderStyledLine renders one line of highlighted spans into a string.
-// If showCursor is true, it draws a reverse-video block cursor at cursorCol
-// by splitting the span that contains the cursor position into three parts:
-// before-cursor, cursor-char (reversed), after-cursor.
-func renderStyledLine(spans []styledSpan, cursorCol int, showCursor bool) string {
-	var b strings.Builder
-	pos := 0            // character position across all spans
-	cursorDone := false // have we already rendered the cursor?
-
-	for _, sp := range spans {
-		runes := []rune(sp.text)
-		rLen := len(runes)
-
-		// Check if the cursor falls inside this span
-		if showCursor && !cursorDone && pos+rLen > cursorCol {
-			off := cursorCol - pos // offset within this span
-
-			// Render text before the cursor in normal style
-			if off > 0 {
-				b.WriteString(sp.style.Render(string(runes[:off])))
-			}
-			// Render the cursor character with reverse video
-			b.WriteString(sp.style.Reverse(true).Render(string(runes[off : off+1])))
-			// Render text after the cursor in normal style
-			if off+1 < rLen {
-				b.WriteString(sp.style.Render(string(runes[off+1:])))
-			}
-			cursorDone = true
-		} else {
-			b.WriteString(sp.style.Render(sp.text))
-		}
-		pos += rLen
-	}
-
-	// If cursor is past the end of all text (e.g. at end of line),
-	// draw a floating block cursor in empty space
-	if showCursor && !cursorDone {
-		b.WriteString(lipgloss.NewStyle().Reverse(true).Render(" "))
-	}
-
-	return b.String()
-}
-
-// renderHighlightedCode produces the full editor panel content:
-// line numbers + syntax-highlighted code + cursor, scrolled to keep
-// the cursor row visible within the given viewHeight.
-func (m model) renderHighlightedCode(viewHeight int) string {
-	code := m.textarea.Value()
-	styledLines := highlightLines(code)
-	totalLines := len(styledLines)
-
-	// Get cursor position from the textarea (it still tracks editing state)
-	curRow := m.textarea.Line()
-	curCol := m.textarea.LineInfo().CharOffset
-
-	// Line number gutter width — at least 3 chars so it doesn't jump around
-	numWidth := len(fmt.Sprintf("%d", totalLines))
-	if numWidth < 3 {
-		numWidth = 3
-	}
-
-	var lines []string
-	for i := 0; i < viewHeight; i++ {
-		idx := m.start + i
-		if idx < totalLines {
-			isCursor := idx == curRow
-
-			// Highlight the current line number more brightly
-			nStyle := lineNumStyle
-			if isCursor {
-				nStyle = cursorLineNumStyle
-			}
-			num := nStyle.Render(fmt.Sprintf("%*d ", numWidth, idx+1))
-			content := renderStyledLine(styledLines[idx], curCol, isCursor)
-			lines = append(lines, num+content)
-		} else {
-			// Past end of file — show tilde like vim
-			lines = append(lines, lineNumStyle.Render(fmt.Sprintf("%*s ", numWidth, "~")))
-		}
-	}
-
-	return strings.Join(lines, "\n")
-}
 
 func printHelpfulTSCErrors(tscOutput, harnessPath string, p *tea.Program) {
 	harnessBytes, _ := os.ReadFile(harnessPath)
 	harnessLines := strings.Split(string(harnessBytes), "\n")
 	scanner := bufio.NewScanner(strings.NewReader(tscOutput))
+	// errorLinePattern matches e.g. "typecheck.ts(10,44): error ..."
 	errorLinePattern := regexp.MustCompile(`typecheck\.ts\((\d+),\d+\): error`)
 	for scanner.Scan() {
 		line := scanner.Text()
@@ -286,10 +132,6 @@ func printHelpfulTSCErrors(tscOutput, harnessPath string, p *tea.Program) {
 			if lineNum-2 >= 0 && lineNum-2 < len(harnessLines) {
 				p.Send(runnerOutputMsg{Line: harnessLines[lineNum-2], Assertion: true})
 			}
-			// Print the assertion line itself
-			// if lineNum-1 >= 0 && lineNum-1 < len(harnessLines) {
-			// 	p.Send(runnerOutputMsg{Line: harnessLines[lineNum-1]})
-			// }
 		}
 		// Always print the error itself
 		p.Send(runnerOutputMsg{Line: line})
@@ -299,8 +141,8 @@ func printHelpfulTSCErrors(tscOutput, harnessPath string, p *tea.Program) {
 func (m *model) appendDebug(msg string) {
 	if m.debugMode {
 		m.debugLog = append(m.debugLog, msg)
-		if len(m.debugLog) > 100 {
-			m.debugLog = m.debugLog[len(m.debugLog)-100:]
+		if len(m.debugLog) > maxBufferLines {
+			m.debugLog = m.debugLog[len(m.debugLog)-maxBufferLines:]
 		}
 	}
 }
@@ -311,11 +153,11 @@ func (m *model) recalcEditorHeight() {
 	}
 	header := headerStyle.Render(m.exercises[m.selected].Title())
 	desc := descStyle.Render(m.exercises[m.selected].Description())
-	m.editorTopY = lipgloss.Height(header) + lipgloss.Height(desc) + 2 // +2 for editor margin
+	m.editorTopY = lipgloss.Height(header) + lipgloss.Height(desc) + editorMarginTop
 
 	debugPanelHeight := 0
 	if m.debugMode {
-		debugPanelHeight = lipgloss.Height(debugStyle.Copy().Width(m.width - 8).Render(strings.Repeat("\n", 4)))
+		debugPanelHeight = lipgloss.Height(debugStyle.Copy().Width(m.width - panelHorizChrome).Render(strings.Repeat("\n", debugPanelLines-1)))
 	}
 
 	help := helpStyle.Render("[esc] Back | [F5] Run | [shift + ← / → ] Prev/Next Exercise")
@@ -325,19 +167,20 @@ func (m *model) recalcEditorHeight() {
 		debugPanelHeight +
 		lipgloss.Height(help)
 
-	panelChrome := 8
-	available := m.height - fixedHeight - panelChrome
+	available := m.height - fixedHeight - panelVertChrome
 
-	maxOutput := 10
-	minEditor := 3
-	outputHeight := maxOutput
-	editorHeight := available - outputHeight
-	if editorHeight < minEditor {
-		editorHeight = minEditor
+	m.outputHeight = maxOutputHeight
+	m.editorHeight = available - m.outputHeight
+	if m.editorHeight < minEditorHeight {
+		m.editorHeight = minEditorHeight
+		m.outputHeight = available - m.editorHeight
+		if m.outputHeight < minOutputHeight {
+			m.outputHeight = minOutputHeight
+		}
 	}
 
-	m.textarea.SetWidth(m.width - 8)
-	m.textarea.SetHeight(editorHeight)
+	m.textarea.SetWidth(m.width - panelHorizChrome)
+	m.textarea.SetHeight(m.editorHeight)
 }
 
 func makeListItems(exs []internal.Exercise, completed map[int]bool) []list.Item {
@@ -361,7 +204,6 @@ func initialModel(state internal.PersistentState) model {
 		items[i] = ex
 	}
 
-	//l := list.New(items, list.NewDefaultDelegate(), 30, 14)
 	l := list.New(makeListItems(exs, state.Completed), list.NewDefaultDelegate(), 30, 14)
 	l.Title = "Select an Exercise"
 	l.SetShowHelp(false)
@@ -411,9 +253,8 @@ func copyVersionFilesToTempDir(tempDir string) {
 	}
 }
 
-func runExerciseStreamed(userCode, testScript string, program *tea.Program, ex internal.Exercise) tea.Cmd {
+func runExerciseStreamed(userCode string, program *tea.Program, ex internal.Exercise) tea.Cmd {
 	return func() tea.Msg {
-		// Create temp dir
 		tmpDir, err := os.MkdirTemp("", "tskoans-*")
 		if err != nil {
 			program.Send(runnerOutputMsg{Line: fmt.Sprintf("Failed to create temp dir: %v", err)})
@@ -421,134 +262,101 @@ func runExerciseStreamed(userCode, testScript string, program *tea.Program, ex i
 			return nil
 		}
 		copyVersionFilesToTempDir(tmpDir)
-
 		defer os.RemoveAll(tmpDir)
 
-		typecheckPath := filepath.Join(tmpDir, "typecheck.ts")
-
-		typeHarness := `// -- Type Assertion Utilities --
-
-// Produces a type error if 'T' is not 'true'
-type Assert<T extends true> = T;
-
-// Checks if two types are the same (structurally)
-type IsType<A, B> = (<T>() => T extends A ? 1 : 2) extends
-                    (<T>() => T extends B ? 1 : 2) ? true : false;
-
-// Checks if type A is not assignable to B
-type IsNotType<A, B> = IsType<A, B> extends true ? false : true;
-
-type IsNotReadonly<T, K extends keyof T> =
-  // Compare: If { [P in K]: T[P] } is assignable to { -readonly [P in K]: T[P] }
-  // then K is not readonly
-  { [P in K]: T[P] } extends { -readonly [P in K]: T[P] }
-    ? true
-    : false;
-
-
-// Checks if type A is assignable to B
-type IsAssignable<A, B> = A extends B ? true : false;
-
-`
-
-		fullTypecheck := string(userCode) + "\n\n" + typeHarness + "\n" + ex.TypeAssertions + "\n"
-
-		if err := os.WriteFile(typecheckPath, []byte(fullTypecheck), 0644); err != nil {
-			program.Send(runnerOutputMsg{Line: fmt.Sprintf("Failed to write typecheck.ts: %v", err)})
+		if err := compileTypeScript(tmpDir, userCode, ex, program); err != nil {
 			program.Send(runnerDoneMsg{Err: err})
 			return nil
 		}
 
-		tscCmd := exec.Command("tsc", typecheckPath, "--target", "es2020", "--module", "commonjs", "--outDir", tmpDir)
-		tscCmd.Dir = tmpDir
-
-		var tscStderrBuf bytes.Buffer
-		tscCmd.Stderr = &tscStderrBuf
-
-		var tscStdoutBuf bytes.Buffer
-		tscCmd.Stdout = &tscStdoutBuf
-
-		if err := tscCmd.Run(); err != nil {
-			program.Send(runnerDebugMsg{Line: fmt.Sprintf("tsc exit error: %v", err)})
-
-			program.Send(runnerDebugMsg{Line: "STDERR: " + tscStderrBuf.String()})
-			program.Send(runnerDebugMsg{Line: "STDOUT: " + tscStdoutBuf.String()})
-
-			// Print annotated errors to your TUI/debug panel/logs
-			printHelpfulTSCErrors(tscStdoutBuf.String(), typecheckPath, program)
-
-			program.Send(runnerOutputMsg{Line: fmt.Sprintf("[tsc] Compilation failed: %v", err)})
+		if err := writeTestBundle(tmpDir, ex.TestScript); err != nil {
+			program.Send(runnerOutputMsg{Line: fmt.Sprintf("Failed to write test bundle: %v", err)})
 			program.Send(runnerDoneMsg{Err: err})
 			return nil
 		}
 
-		jsBytes, err := os.ReadFile(filepath.Join(tmpDir, "typecheck.js"))
-		if err != nil { /* handle error */
-		}
-
-		combined := fmt.Sprintf("%s\n\n%s\n", string(jsBytes), ex.TestScript)
-
-		// Write to a single file, say, run.js
-		runPath := filepath.Join(tmpDir, "run.js")
-		os.WriteFile(runPath, []byte(combined), 0644)
-		// Write runner.mjs
-		runnerPath := filepath.Join(tmpDir, "runner.mjs")
-		runner := `
-import { readFileSync } from "fs";
-import vm from "vm";
-
-const combined = readFileSync("./run.js", "utf8");
-
-// Optionally: set up a basic sandbox (exports/global, etc.)
-const sandbox = { exports: {}, module: { exports: {}}, console };
-const context = vm.createContext(sandbox);
-
-try {
-  vm.runInContext(combined, context, { timeout: 1000 });
-  console.log("✅ All tests passed!")
-} catch (err) {
-  // Print clean error message
-  console.log("❌ Test failed:", err && err.message ? err.message : err);
-  process.exit(1);
-}
-
-`
-		if err := os.WriteFile(runnerPath, []byte(runner), 0644); err != nil {
-			program.Send(runnerOutputMsg{Line: fmt.Sprintf("Failed to write runner.mjs: %v", err)})
-			program.Send(runnerDoneMsg{Err: err})
-			return nil
-		}
-
-		ctx, cancel := context.WithTimeout(context.Background(), 2*time.Second)
-		defer cancel()
-
-		nodeCmd := exec.CommandContext(ctx, "node", runnerPath)
-		nodeCmd.Dir = tmpDir
-
-		var nodeStdoutBuf, nodeStderrBuf bytes.Buffer
-		nodeCmd.Stdout = &nodeStdoutBuf
-		nodeCmd.Stderr = &nodeStderrBuf
-
-		err = nodeCmd.Run()
-
-		if ctx.Err() == context.DeadlineExceeded {
-			program.Send(runnerOutputMsg{Line: "[node] Execution timed out!"})
-			program.Send(runnerDoneMsg{Err: ctx.Err()})
-			return nil
-		}
-		if nodeStdoutBuf.Len() > 0 {
-			program.Send(runnerOutputMsg{Line: "[node stdout] " + nodeStdoutBuf.String()})
-		}
-		if nodeStderrBuf.Len() > 0 {
-			program.Send(runnerOutputMsg{Line: "[node stderr] " + nodeStderrBuf.String()})
-		}
-		if err != nil {
-			program.Send(runnerOutputMsg{Line: fmt.Sprintf("[node] Test runner failed: %v", err)})
-		}
+		err = runNodeTests(tmpDir, program)
 		program.Send(runnerDoneMsg{Err: err})
 		return nil
-
 	}
+}
+
+// compileTypeScript writes the user code + type harness + assertions to a .ts file,
+// then runs tsc. Returns nil on success, or the tsc error (after sending output messages).
+func compileTypeScript(tmpDir, userCode string, ex internal.Exercise, program *tea.Program) error {
+	typecheckPath := filepath.Join(tmpDir, "typecheck.ts")
+	fullTypecheck := userCode + "\n\n" + internal.TypeHarness + "\n" + ex.TypeAssertions + "\n"
+
+	if err := os.WriteFile(typecheckPath, []byte(fullTypecheck), 0644); err != nil {
+		program.Send(runnerOutputMsg{Line: fmt.Sprintf("Failed to write typecheck.ts: %v", err)})
+		return err
+	}
+
+	tscCmd := exec.Command("tsc", typecheckPath, "--target", "es2020", "--module", "commonjs", "--outDir", tmpDir)
+	tscCmd.Dir = tmpDir
+
+	var tscStderrBuf, tscStdoutBuf bytes.Buffer
+	tscCmd.Stderr = &tscStderrBuf
+	tscCmd.Stdout = &tscStdoutBuf
+
+	if err := tscCmd.Run(); err != nil {
+		program.Send(runnerDebugMsg{Line: fmt.Sprintf("tsc exit error: %v", err)})
+		program.Send(runnerDebugMsg{Line: "STDERR: " + tscStderrBuf.String()})
+		program.Send(runnerDebugMsg{Line: "STDOUT: " + tscStdoutBuf.String()})
+		printHelpfulTSCErrors(tscStdoutBuf.String(), typecheckPath, program)
+		program.Send(runnerOutputMsg{Line: fmt.Sprintf("[tsc] Compilation failed: %v", err)})
+		return err
+	}
+	return nil
+}
+
+// writeTestBundle reads the compiled JS, combines it with the test script,
+// and writes both run.js and runner.mjs into tmpDir.
+func writeTestBundle(tmpDir, testScript string) error {
+	jsBytes, err := os.ReadFile(filepath.Join(tmpDir, "typecheck.js"))
+	if err != nil {
+		return fmt.Errorf("read compiled JS: %w", err)
+	}
+
+	combined := fmt.Sprintf("%s\n\n%s\n", string(jsBytes), testScript)
+	if err := os.WriteFile(filepath.Join(tmpDir, "run.js"), []byte(combined), 0644); err != nil {
+		return fmt.Errorf("write run.js: %w", err)
+	}
+
+	if err := os.WriteFile(filepath.Join(tmpDir, "runner.mjs"), []byte(internal.RunnerMJS), 0644); err != nil {
+		return fmt.Errorf("write runner.mjs: %w", err)
+	}
+	return nil
+}
+
+// runNodeTests executes runner.mjs with a timeout and sends stdout/stderr as output messages.
+func runNodeTests(tmpDir string, program *tea.Program) error {
+	ctx, cancel := context.WithTimeout(context.Background(), 2*time.Second)
+	defer cancel()
+
+	nodeCmd := exec.CommandContext(ctx, "node", filepath.Join(tmpDir, "runner.mjs"))
+	nodeCmd.Dir = tmpDir
+
+	var nodeStdoutBuf, nodeStderrBuf bytes.Buffer
+	nodeCmd.Stdout = &nodeStdoutBuf
+	nodeCmd.Stderr = &nodeStderrBuf
+
+	err := nodeCmd.Run()
+
+	if ctx.Err() == context.DeadlineExceeded {
+		program.Send(runnerOutputMsg{Line: "[node] Execution timed out!"})
+		return ctx.Err()
+	}
+	if nodeStdoutBuf.Len() > 0 {
+		program.Send(runnerOutputMsg{Line: "[node stdout] " + nodeStdoutBuf.String()})
+	}
+	if nodeStderrBuf.Len() > 0 {
+		program.Send(runnerOutputMsg{Line: "[node stderr] " + nodeStderrBuf.String()})
+	}
+	if err != nil {
+		program.Send(runnerOutputMsg{Line: fmt.Sprintf("[node] Test runner failed: %v", err)})
+	}
+	return err
 }
 
 func outputLinesToString(lines []runnerOutputMsg) string {
@@ -562,199 +370,211 @@ func outputLinesToString(lines []runnerOutputMsg) string {
 func (m model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 	switch m.state {
 	case menu:
-		switch msg := msg.(type) {
-		case setProgramMsg:
-			m.program = msg.program
+		return m.updateMenu(msg)
+	case editor:
+		return m.updateEditor(msg)
+	}
+	return m, nil
+}
 
-		case tea.WindowSizeMsg:
-			m.width = msg.Width
-			m.height = msg.Height
-			m.list.SetSize(msg.Width, msg.Height)
+// listHeaderHeight returns the number of terminal rows the list widget
+// renders above the first item (title/filter bar + status bar).
+func (m model) listHeaderHeight() int {
+	h := 0
+	if m.list.ShowTitle() || m.list.ShowFilter() {
+		// Title bar: 1 line of text + 1 line of bottom padding (default style)
+		h += 2
+	}
+	if m.list.ShowStatusBar() {
+		// Status bar: 1 line of text + 1 line of bottom padding (default style)
+		h += 2
+	}
+	return h
+}
 
-		case tea.MouseMsg:
-			// Handle mouse click to select an exercise
+func (m model) updateMenu(msg tea.Msg) (tea.Model, tea.Cmd) {
+	switch msg := msg.(type) {
+	case setProgramMsg:
+		m.program = msg.program
+
+	case tea.WindowSizeMsg:
+		m.width = msg.Width
+		m.height = msg.Height
+		// Reserve 2 lines for the help text rendered below the list
+		m.list.SetSize(msg.Width, msg.Height-2)
+
+	case tea.MouseMsg:
+		// Don't intercept clicks while the filter input is focused
+		if !m.list.SettingFilter() {
 			if msg.Action == tea.MouseActionPress && msg.Button == tea.MouseButtonLeft {
-				listTopY := 1
-				itemHeight := 3
-				slot := (msg.Y - listTopY) / itemHeight
+				slot := (msg.Y - m.listHeaderHeight()) / listItemHeight
 				page := m.list.Paginator.Page
 				perPage := m.list.Paginator.PerPage
 				idx := page*perPage + slot
-				if idx >= 0 && idx < len(m.exercises) {
+				if idx >= 0 && idx < len(m.list.VisibleItems()) {
 					m.list.Select(idx)
 					return m, nil
 				}
 			}
+		}
 
-		case tea.KeyMsg:
+	case tea.KeyMsg:
+		// While filtering, let the list widget handle all keys
+		// (Enter accepts the filter, Escape cancels it)
+		if !m.list.SettingFilter() {
 			switch msg.String() {
 			case "q", "ctrl+c":
-				// Save before quitting
-				m.persistentState.SelectedIndex = m.selected
-				internal.SaveState(m.persistentState)
+				m.saveState()
 				return m, tea.Quit
 			case "enter":
 				m.outputLines = nil
-				m.persistentState.SelectedIndex = m.selected
-				internal.SaveState(m.persistentState)
-				i := m.list.Index()
-				m.selected = i
-				selectedEx := m.exercises[i]
-				// Restore user's previous solution if it exists
-				if code, ok := m.persistentState.Solutions[i]; ok && code != "" {
-					m.textarea.SetValue(code)
-				} else {
-					m.textarea.SetValue(selectedEx.StarterCode)
-				}
+				m.switchToExercise(m.list.GlobalIndex())
 				m.textarea.Focus()
 				m.state = editor
-				m.recalcEditorHeight()
 			}
 		}
-		var cmd tea.Cmd
-		m.list, cmd = m.list.Update(msg)
-		return m, cmd
-
-	case editor:
-		switch msg := msg.(type) {
-		case runnerOutputMsg:
-			m.outputLines = append(m.outputLines, msg)
-			if len(m.outputLines) > 100 {
-				m.outputLines = m.outputLines[len(m.outputLines)-100:]
-			}
-			m.recalcEditorHeight()
-
-		case runnerDebugMsg:
-			if m.debugMode {
-				m.appendDebug(msg.Line)
-			}
-
-			return m, nil
-
-		case runnerDoneMsg:
-			m.running = false
-			m.recalcEditorHeight()
-
-			output := outputLinesToString(m.outputLines)
-			if strings.Contains(output, "✅") {
-				if m.persistentState.Completed == nil {
-					m.persistentState.Completed = make(map[int]bool)
-				}
-				m.persistentState.Completed[m.selected] = true
-				m.list.SetItems(makeListItems(m.exercises, m.persistentState.Completed))
-				internal.SaveState(m.persistentState)
-			}
-			return m, nil
-		case tea.WindowSizeMsg:
-			m.width = msg.Width
-			m.height = msg.Height
-			m.recalcEditorHeight()
-			m.textarea.SetCursor(0)
-			return m, nil
-		case tea.MouseMsg:
-			// Click to move cursor
-			if msg.Action == tea.MouseActionPress && msg.Button == tea.MouseButtonLeft {
-				editorBottomY := m.editorTopY + m.textarea.Height() - 1
-				editorLeftX := 6 // MarginLeft(4) + line number gutter (2+ chars)
-				contentLeftX := editorLeftX + m.gutterWidth
-
-				// Get code coordinates
-				targetLine := msg.Y - m.editorTopY + m.start
-				targetCol := msg.X - contentLeftX
-
-				// Bounds checks (ignore clicks outside editor)
-				totalLines := len(strings.Split(m.textarea.Value(), "\n"))
-				if msg.Y < m.editorTopY || msg.Y >= editorBottomY || msg.X < contentLeftX || targetLine >= totalLines {
-					return m, nil
-				}
-				if targetCol < 0 {
-					targetCol = 0
-				}
-
-				// Move cursor in textarea
-				currentLine := m.textarea.Line()
-				for currentLine < targetLine {
-					m.textarea, _ = m.textarea.Update(tea.KeyMsg{Type: tea.KeyDown})
-					currentLine++
-				}
-				for currentLine > targetLine {
-					m.textarea, _ = m.textarea.Update(tea.KeyMsg{Type: tea.KeyUp})
-					currentLine--
-				}
-
-				// Clamp col to len of target line, set col
-				lines := strings.Split(m.textarea.Value(), "\n")
-				lineLen := len([]rune(lines[targetLine]))
-				if targetCol > lineLen {
-					targetCol = lineLen
-				}
-
-				m.textarea.SetCursor(targetCol)
-
-				m.calculateCursorCoordinates()
-
-				return m, nil
-			}
-		case tea.KeyMsg:
-			switch msg.String() {
-			case "esc":
-				m.outputLines = nil
-				m.persistentState.SelectedIndex = m.selected
-				m.persistentState.Solutions[m.selected] = m.textarea.Value()
-				internal.SaveState(m.persistentState)
-				m.state = menu
-				m.textarea.Blur()
-				return m, nil
-			case "tab":
-				m.textarea = insertSpacesAtCursor(m.textarea, 2)
-				return m, nil
-			case "f5":
-				m.persistentState.Solutions[m.selected] = m.textarea.Value()
-				internal.SaveState(m.persistentState)
-				userCode := m.textarea.Value()
-				testScript := m.exercises[m.selected].TestScript
-				m.outputLines = nil
-				m.running = true
-				m.recalcEditorHeight()
-				return m, tea.Batch(m.spinner.Tick, runExerciseStreamed(userCode, testScript, m.program, m.exercises[m.selected]))
-			case "shift+right":
-				m.persistentState.SelectedIndex = m.selected
-				internal.SaveState(m.persistentState)
-				i := (m.selected + 1) % len(m.exercises)
-				m.selected = i
-				selectedEx := m.exercises[i]
-				if code, ok := m.persistentState.Solutions[i]; ok && code != "" {
-					m.textarea.SetValue(code)
-				} else {
-					m.textarea.SetValue(selectedEx.StarterCode)
-				}
-				return m, nil
-			case "shift+left":
-				m.persistentState.SelectedIndex = m.selected
-				internal.SaveState(m.persistentState)
-				i := (m.selected - 1 + len(m.exercises)) % len(m.exercises)
-				m.selected = i
-				selectedEx := m.exercises[i]
-				if code, ok := m.persistentState.Solutions[i]; ok && code != "" {
-					m.textarea.SetValue(code)
-				} else {
-					m.textarea.SetValue(selectedEx.StarterCode)
-				}
-				return m, nil
-			}
-		}
-		if m.running {
-			var spinCmd tea.Cmd
-			m.spinner, spinCmd = m.spinner.Update(msg)
-			return m, spinCmd
-		}
-		var cmd tea.Cmd
-		m.textarea, cmd = m.textarea.Update(msg)
-		// Calculate cursor start
-		m.calculateCursorCoordinates()
-		return m, cmd
 	}
-	return m, nil
+	var cmd tea.Cmd
+	m.list, cmd = m.list.Update(msg)
+	return m, cmd
+}
+
+func (m model) updateEditor(msg tea.Msg) (tea.Model, tea.Cmd) {
+	switch msg := msg.(type) {
+	case runnerOutputMsg:
+		m.outputLines = append(m.outputLines, msg)
+		if len(m.outputLines) > maxBufferLines {
+			m.outputLines = m.outputLines[len(m.outputLines)-maxBufferLines:]
+		}
+		m.recalcEditorHeight()
+
+	case runnerDebugMsg:
+		if m.debugMode {
+			m.appendDebug(msg.Line)
+		}
+
+		return m, nil
+
+	case runnerDoneMsg:
+		m.running = false
+		m.recalcEditorHeight()
+
+		output := outputLinesToString(m.outputLines)
+		if strings.Contains(output, "✅") {
+			if m.persistentState.Completed == nil {
+				m.persistentState.Completed = make(map[int]bool)
+			}
+			m.persistentState.Completed[m.selected] = true
+			m.list.SetItems(makeListItems(m.exercises, m.persistentState.Completed))
+			m.saveState()
+		}
+		return m, nil
+	case tea.WindowSizeMsg:
+		m.width = msg.Width
+		m.height = msg.Height
+		m.recalcEditorHeight()
+		m.textarea.SetCursor(0)
+		return m, nil
+	case tea.MouseMsg:
+		// Click to move cursor
+		if msg.Action == tea.MouseActionPress && msg.Button == tea.MouseButtonLeft {
+			editorBottomY := m.editorTopY + m.textarea.Height() - 1
+			contentLeftX := editorLeftX + m.gutterWidth
+
+			// Get code coordinates
+			targetLine := msg.Y - m.editorTopY + m.start
+			targetCol := msg.X - contentLeftX
+
+			// Bounds checks (ignore clicks outside editor)
+			totalLines := len(strings.Split(m.textarea.Value(), "\n"))
+			if msg.Y < m.editorTopY || msg.Y >= editorBottomY || msg.X < contentLeftX || targetLine >= totalLines {
+				return m, nil
+			}
+			if targetCol < 0 {
+				targetCol = 0
+			}
+
+			// Move cursor in textarea
+			currentLine := m.textarea.Line()
+			for currentLine < targetLine {
+				m.textarea, _ = m.textarea.Update(tea.KeyMsg{Type: tea.KeyDown})
+				currentLine++
+			}
+			for currentLine > targetLine {
+				m.textarea, _ = m.textarea.Update(tea.KeyMsg{Type: tea.KeyUp})
+				currentLine--
+			}
+
+			// Clamp col to len of target line, set col
+			lines := strings.Split(m.textarea.Value(), "\n")
+			lineLen := len([]rune(lines[targetLine]))
+			if targetCol > lineLen {
+				targetCol = lineLen
+			}
+
+			m.textarea.SetCursor(targetCol)
+
+			m.calculateCursorCoordinates()
+
+			return m, nil
+		}
+	case tea.KeyMsg:
+		switch msg.String() {
+		case "ctrl+c":
+			// Save before quitting
+			m.saveState()
+			return m, tea.Quit
+		case "esc":
+			m.outputLines = nil
+			m.saveState()
+			m.state = menu
+			m.textarea.Blur()
+			return m, nil
+		case "tab":
+			m.textarea = insertSpacesAtCursor(m.textarea, tabWidth)
+			return m, nil
+		case "f5":
+			m.saveState()
+			userCode := m.textarea.Value()
+			m.outputLines = nil
+			m.running = true
+			m.recalcEditorHeight()
+			return m, tea.Batch(m.spinner.Tick, runExerciseStreamed(userCode, m.program, m.exercises[m.selected]))
+		case "shift+right":
+			m.switchToExercise((m.selected + 1) % len(m.exercises))
+			return m, nil
+		case "shift+left":
+			m.switchToExercise((m.selected - 1 + len(m.exercises)) % len(m.exercises))
+			return m, nil
+		}
+	}
+	if m.running {
+		var spinCmd tea.Cmd
+		m.spinner, spinCmd = m.spinner.Update(msg)
+		return m, spinCmd
+	}
+	var cmd tea.Cmd
+	m.textarea, cmd = m.textarea.Update(msg)
+	// Calculate cursor start
+	m.calculateCursorCoordinates()
+	return m, cmd
+}
+
+func (m *model) saveState() {
+	m.persistentState.SelectedIndex = m.selected
+	m.persistentState.Solutions[m.selected] = m.textarea.Value()
+	internal.SaveState(m.persistentState)
+}
+
+func (m *model) switchToExercise(i int) {
+	m.saveState()
+	m.selected = i
+	if code, ok := m.persistentState.Solutions[i]; ok && code != "" {
+		m.textarea.SetValue(code)
+	} else {
+		m.textarea.SetValue(m.exercises[i].StarterCode)
+	}
+	m.recalcEditorHeight()
 }
 
 func (m *model) calculateCursorCoordinates() {
@@ -771,14 +591,14 @@ func (m *model) calculateCursorCoordinates() {
 	}
 
 	numWidth := len(fmt.Sprintf("%d", totalLines))
-	if numWidth < 3 {
-		numWidth = 3
+	if numWidth < minGutterWidth {
+		numWidth = minGutterWidth
 	}
 	m.gutterWidth = numWidth + 1 // line numbers + space
 }
 
 func (m model) renderOutputPanel(boxHeight int) string {
-	style := outputStyle.Copy().Width(m.width - 8) // match editor panel width
+	style := outputStyle.Copy().Width(m.width - panelHorizChrome)
 
 	if m.running {
 		spin := m.spinner.View()
@@ -797,8 +617,6 @@ func (m model) renderOutputPanel(boxHeight int) string {
 		lines = append(lines, runnerOutputMsg{Line: ""})
 	}
 
-	// Style for assertion lines
-	assertionStyle := lipgloss.NewStyle().Foreground(lipgloss.Color("12")).Bold(true)
 	renderedLines := make([]string, len(lines))
 	for i, msg := range lines {
 		if msg.Assertion {
@@ -821,46 +639,21 @@ func (m model) View() string {
 
 		debugPanel := ""
 		if m.debugMode {
-			debugPanelHeight := 5
 			n := len(m.debugLog)
 			start := 0
-			if n > debugPanelHeight {
-				start = n - debugPanelHeight
+			if n > debugPanelLines {
+				start = n - debugPanelLines
 			}
 			logs := m.debugLog[start:]
-			debugPanel = debugStyle.Copy().Width(m.width - 8).Render(strings.Join(logs, "\n"))
+			debugPanel = debugStyle.Copy().Width(m.width - panelHorizChrome).Render(strings.Join(logs, "\n"))
 		}
 
 		help := helpStyle.Render("[esc] Back | [F5] Run | [shift + ← / → ] Prev/Next Exercise")
 
-		// Fixed overhead: header + desc + help + debug + border/margin for editor and output (~4 lines each)
-		fixedHeight := lipgloss.Height(header) +
-			lipgloss.Height(desc) +
-			lipgloss.Height(debugPanel) +
-			lipgloss.Height(help)
-
-		// Borders/margins add ~4 lines per boxed panel (editor + output)
-		panelChrome := 8
-		available := m.height - fixedHeight - panelChrome
-
-		// Split available space: editor gets priority, output gets the rest (up to 10)
-		minEditor := 3
-		maxOutput := 10
-		outputHeight := maxOutput
-		editorHeight := available - outputHeight
-		if editorHeight < minEditor {
-			editorHeight = minEditor
-			outputHeight = available - editorHeight
-			if outputHeight < 3 {
-				outputHeight = 3
-			}
-		}
-		m.appendDebug(fmt.Sprintf("editorHeight: %d, outputHeight: %d, available: %d", editorHeight, outputHeight, available))
-
-		output := m.renderOutputPanel(outputHeight)
+		output := m.renderOutputPanel(m.outputHeight)
 
 		// Set editor size
-		editor := editorStyle.Copy().Width(m.width - 8).Height(editorHeight).Render(m.renderHighlightedCode(editorHeight))
+		editor := editorStyle.Copy().Width(m.width - panelHorizChrome).Height(m.editorHeight).Render(m.renderHighlightedCode(m.editorHeight))
 
 		// Compose
 		panels := []string{header, desc, editor, output}
@@ -913,7 +706,7 @@ func main() {
 	go func() {
 		p.Send(setProgramMsg{program: p})
 	}()
-	if err := p.Start(); err != nil {
+	if _, err := p.Run(); err != nil {
 		fmt.Println("Error running program:", err)
 		os.Exit(1)
 	}
