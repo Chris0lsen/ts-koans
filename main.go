@@ -21,6 +21,8 @@ import (
 	"github.com/charmbracelet/lipgloss"
 
 	"github.com/chris0lsen/ts-koans/internal"
+
+	"github.com/lithammer/dedent"
 )
 
 type state int
@@ -113,6 +115,12 @@ var (
 			MarginTop(1).
 			PaddingLeft(4)
 
+	infoStyle = lipgloss.NewStyle().
+			MarginLeft(2).
+			MarginTop(1).
+			PaddingLeft(1).
+			Border(lipgloss.NormalBorder())
+
 	lineNumStyle       = lipgloss.NewStyle().Foreground(lipgloss.Color("240"))
 	cursorLineNumStyle = lipgloss.NewStyle().Foreground(lipgloss.Color("252"))
 	assertionStyle     = lipgloss.NewStyle().Foreground(lipgloss.Color("12")).Bold(true)
@@ -157,7 +165,7 @@ func (m *model) recalcEditorHeight() {
 
 	debugPanelHeight := 0
 	if m.debugMode {
-		debugPanelHeight = lipgloss.Height(debugStyle.Copy().Width(m.width - panelHorizChrome).Render(strings.Repeat("\n", debugPanelLines-1)))
+		debugPanelHeight = lipgloss.Height(debugStyle.Width(m.width - panelHorizChrome).Render(strings.Repeat("\n", debugPanelLines-1)))
 	}
 
 	help := helpStyle.Render("[esc] Back | [F5] Run | [shift + ← / → ] Prev/Next Exercise")
@@ -598,7 +606,7 @@ func (m *model) calculateCursorCoordinates() {
 }
 
 func (m model) renderOutputPanel(boxHeight int) string {
-	style := outputStyle.Copy().Width(m.width - panelHorizChrome)
+	style := outputStyle.Width(m.width - panelHorizChrome)
 
 	if m.running {
 		spin := m.spinner.View()
@@ -645,7 +653,7 @@ func (m model) View() string {
 				start = n - debugPanelLines
 			}
 			logs := m.debugLog[start:]
-			debugPanel = debugStyle.Copy().Width(m.width - panelHorizChrome).Render(strings.Join(logs, "\n"))
+			debugPanel = debugStyle.Width(m.width - panelHorizChrome).Render(strings.Join(logs, "\n"))
 		}
 
 		help := helpStyle.Render("[esc] Back | [F5] Run | [shift + ← / → ] Prev/Next Exercise")
@@ -653,7 +661,18 @@ func (m model) View() string {
 		output := m.renderOutputPanel(m.outputHeight)
 
 		// Set editor size
-		editor := editorStyle.Copy().Width(m.width - panelHorizChrome).Height(m.editorHeight).Render(m.renderHighlightedCode(m.editorHeight))
+		infoChrome := 6 // infoStyle MarginLeft(2) + Border(1) + PaddingLeft(1) + right border(1) + safety(1)
+		editorWidth := (m.width - panelHorizChrome) * 60 / 100
+		editor := editorStyle.Width(editorWidth).Height(m.editorHeight).Render(m.renderHighlightedCode(m.editorHeight))
+
+		// Join help text panel horizontally with editor (when enough width)
+		if m.width > 80 && m.exercises[m.selected].Info() != "" {
+			infoWidth := m.width - panelHorizChrome - editorWidth - infoChrome
+			if infoWidth > 10 {
+				info := infoStyle.Width(infoWidth).Height(m.editorHeight).Render(dedent.Dedent(m.exercises[m.selected].Info()))
+				editor = lipgloss.JoinHorizontal(lipgloss.Top, editor, info)
+			}
+		}
 
 		// Compose
 		panels := []string{header, desc, editor, output}
