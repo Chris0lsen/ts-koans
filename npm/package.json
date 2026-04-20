@@ -1,7 +1,7 @@
 {
   "name": "ts-koans",
   "version": "0.0.1",
-  "description": "Interactive TypeScript type-system koans (Go binary distributed via npm).",
+  "description": "Typescript learning exercises",
   "bin": {
     "ts-koans": "bin/ts-koans.js",
     "tskoans": "bin/ts-koans.js"
@@ -16,7 +16,7 @@
     "LICENSE"
   ],
   "engines": {
-    "node": ">=18"
+    "node": ">=20"
   },
   "os": [
     "darwin",
@@ -29,11 +29,11 @@
   ],
   "repository": {
     "type": "git",
-    "url": "git+https://github.com/chris0lsen/ts-koans.git"
+    "url": "git+https://github.com/Chris0lsen/ts-koans.git"
   },
-  "homepage": "https://github.com/chris0lsen/ts-koans#readme",
+  "homepage": "https://github.com/Chris0lsen/ts-koans#readme",
   "bugs": {
-    "url": "https://github.com/chris0lsen/ts-koans/issues"
+    "url": "https://github.com/Chris0lsen/ts-koans/issues"
   },
   "license": "MIT",
   "keywords": [

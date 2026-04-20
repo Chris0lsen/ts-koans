@@ -65,14 +65,12 @@ jobs:
     needs: release
     runs-on: ubuntu-latest
     permissions:
-      id-token: write
       contents: read
     steps:
       - uses: actions/checkout@v6
       - name: Set up Node.js
         uses: actions/setup-node@v6
         with:
-          # Node 24 ships with npm >= 11; Trusted Publishing needs >= 11.5.1.
           node-version: "24"
           registry-url: "https://registry.npmjs.org"
       - name: Set package version from tag
@@ -84,7 +82,8 @@ jobs:
       - name: Publish
         working-directory: npm
         env:
+          NODE_AUTH_TOKEN: ${{ secrets.NPM_TOKEN }}
           # Don't try to download the binary during `npm publish`'s own
           # install step.
           TSKOANS_SKIP_DOWNLOAD: "1"
-        run: npm publish --access public --loglevel verbose --provenance
+        run: npm publish --access public
