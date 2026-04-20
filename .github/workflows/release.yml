@@ -30,26 +30,18 @@ jobs:
       - name: Build and package
         run: |
           EXT=""
-          ARCHIVE_EXT="tar.gz"
           if [ "${{ matrix.goos }}" = "windows" ]; then
             EXT=".exe"
-            ARCHIVE_EXT="zip"
           fi
           BINARY="tskoans${EXT}"
-          ARCHIVE="tskoans-${{ matrix.goos }}-${{ matrix.goarch }}.${ARCHIVE_EXT}"
+          ARCHIVE="tskoans-${{ matrix.goos }}-${{ matrix.goarch }}.tar.gz"
           GOOS=${{ matrix.goos }} GOARCH=${{ matrix.goarch }} CGO_ENABLED=0 go build -o "$BINARY"
-          if [ "${{ matrix.goos }}" = "windows" ]; then
-            zip "$ARCHIVE" "$BINARY"
-          else
-            tar -czf "$ARCHIVE" "$BINARY"
-          fi
+          tar -czf "$ARCHIVE" "$BINARY"
       - name: Upload artifact
         uses: actions/upload-artifact@v6
         with:
           name: binaries-${{ matrix.goos }}-${{ matrix.goarch }}
-          path: |
-            tskoans-*.tar.gz
-            tskoans-*.zip
+          path: tskoans-*.tar.gz
 
   release:
     name: Release
@@ -63,8 +55,38 @@ jobs:
       - name: Move archives to root
         run: |
           find . -type f -name "tskoans-*.tar.gz" -exec mv {} . \;
-          find . -type f -name "tskoans-*.zip" -exec mv {} . \;
       - uses: ncipollo/release-action@v1
         with:
-          artifacts: "tskoans-*.tar.gz,tskoans-*.zip"
+          artifacts: "tskoans-*.tar.gz"
           token: ${{ secrets.GITHUB_TOKEN }}
+
+  npm-publish:
+    name: Publish to npm
+    needs: release
+    runs-on: ubuntu-latest
+    permissions:
+      # Required for npm Trusted Publishing (OIDC). No NPM_TOKEN needed.
+      id-token: write
+      contents: read
+    steps:
+      - uses: actions/checkout@v6
+      - name: Set up Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: "20"
+          registry-url: "https://registry.npmjs.org"
+      - name: Upgrade npm (Trusted Publishing requires >= 11.5.1)
+        run: npm install -g npm@latest
+      - name: Set package version from tag
+        working-directory: npm
+        run: |
+          VERSION="${GITHUB_REF_NAME#v}"
+          echo "Publishing ts-koans@${VERSION}"
+          npm version "$VERSION" --no-git-tag-version --allow-same-version
+      - name: Publish
+        working-directory: npm
+        env:
+          # Don't try to download the binary during `npm publish`'s own
+          # install step.
+          TSKOANS_SKIP_DOWNLOAD: "1"
+        run: npm publish --access public --provenance
