@@ -73,9 +73,18 @@ jobs:
       - name: Set up Node.js
         uses: actions/setup-node@v4
         with:
-          node-version: "20"
-      - name: Upgrade npm (Trusted Publishing requires >= 11.5.1)
-        run: npm install -g npm@latest
+          # Node 22 ships with npm >= 11; Trusted Publishing needs >= 11.5.1.
+          node-version: "22"
+      - name: Upgrade npm to latest
+        run: |
+          npm install -g npm@latest
+          hash -r
+          echo "npm version: $(npm --version)"
+          echo "npm path:    $(which npm)"
+      - name: Diagnose OIDC environment
+        run: |
+          echo "NODE_AUTH_TOKEN is ${NODE_AUTH_TOKEN:+SET (will block OIDC)}${NODE_AUTH_TOKEN:-unset (good)}"
+          echo "ACTIONS_ID_TOKEN_REQUEST_URL: ${ACTIONS_ID_TOKEN_REQUEST_URL:+set (good)}${ACTIONS_ID_TOKEN_REQUEST_URL:-MISSING — check permissions.id-token: write}"
       - name: Set package version from tag
         working-directory: npm
         run: |
