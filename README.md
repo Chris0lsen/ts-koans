@@ -11,9 +11,25 @@ Note that if you use a version manager such as [nvm](https://github.com/nvm-sh/n
 
 ## Running
 
+### NPM
+
+```bash
+npm i -g ts-koans
+```
+
+and then
+
+```bash
+ts-koans
+```
+
+### GitHub Release
+
 Download the latest release for your architecture, then extract and run `tskoans` from your favorite terminal emulator.
 
-Alternatively, you may clone this repo and run `go run .` from the root.
+### From Source
+
+Alternatively, you may clone this repo and run `go run .` from the root. This requires golang to be available in your `$PATH`.
 
 ## Problems?
 

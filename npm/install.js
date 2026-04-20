@@ -11,7 +11,7 @@ const os = require("os");
 const https = require("https");
 const { spawnSync } = require("child_process");
 
-const REPO = "chris0lsen/ts-koans";
+const REPO = "Chris0lsen/ts-koans";
 const pkg = require("./package.json");
 const VERSION = process.env.TSKOANS_VERSION || pkg.version;
 

@@ -86,4 +86,4 @@ jobs:
           # Don't try to download the binary during `npm publish`'s own
           # install step.
           TSKOANS_SKIP_DOWNLOAD: "1"
-        run: npm publish --access public
+        run: npm publish --access public --provenance
