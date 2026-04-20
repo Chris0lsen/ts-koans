@@ -75,14 +75,10 @@ jobs:
         with:
           # Node 22 ships with npm >= 11; Trusted Publishing needs >= 11.5.1.
           node-version: "22"
-      - name: Upgrade npm to latest
-        run: |
-          npm install -g npm@latest
-          hash -r
-          echo "npm version: $(npm --version)"
-          echo "npm path:    $(which npm)"
       - name: Diagnose OIDC environment
         run: |
+          echo "node version: $(node --version)"
+          echo "npm version:  $(npm --version)"
           echo "NODE_AUTH_TOKEN is ${NODE_AUTH_TOKEN:+SET (will block OIDC)}${NODE_AUTH_TOKEN:-unset (good)}"
           echo "ACTIONS_ID_TOKEN_REQUEST_URL: ${ACTIONS_ID_TOKEN_REQUEST_URL:+set (good)}${ACTIONS_ID_TOKEN_REQUEST_URL:-MISSING — check permissions.id-token: write}"
       - name: Set package version from tag
