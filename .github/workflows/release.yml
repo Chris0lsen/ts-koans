@@ -65,7 +65,6 @@ jobs:
     needs: release
     runs-on: ubuntu-latest
     permissions:
-      # Required for npm Trusted Publishing (OIDC). No NPM_TOKEN needed.
       id-token: write
       contents: read
     steps:
@@ -75,12 +74,6 @@ jobs:
         with:
           # Node 24 ships with npm >= 11; Trusted Publishing needs >= 11.5.1.
           node-version: "24"
-      - name: Diagnose OIDC environment
-        run: |
-          echo "node version: $(node --version)"
-          echo "npm version:  $(npm --version)"
-          echo "NODE_AUTH_TOKEN is ${NODE_AUTH_TOKEN:+SET (will block OIDC)}${NODE_AUTH_TOKEN:-unset (good)}"
-          echo "ACTIONS_ID_TOKEN_REQUEST_URL: ${ACTIONS_ID_TOKEN_REQUEST_URL:+set (good)}${ACTIONS_ID_TOKEN_REQUEST_URL:-MISSING — check permissions.id-token: write}"
       - name: Set package version from tag
         working-directory: npm
         run: |
@@ -93,6 +86,4 @@ jobs:
           # Don't try to download the binary during `npm publish`'s own
           # install step.
           TSKOANS_SKIP_DOWNLOAD: "1"
-          # Force npm to use OIDC / Trusted Publishing if available.
-          NPM_CONFIG_PROVENANCE: "true"
-        run: npm publish --access public --loglevel verbose
+        run: npm publish --access public --loglevel verbose --provenance
