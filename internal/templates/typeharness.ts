@@ -4,6 +4,7 @@
 type Assert<T extends true> = T;
 
 // Checks if two types are the same (structurally)
+// https://stackoverflow.com/questions/53807517/how-to-test-if-two-types-are-exactly-the-same
 type IsType<A, B> = (<T>() => T extends A ? 1 : 2) extends
                     (<T>() => T extends B ? 1 : 2) ? true : false;
 
@@ -11,11 +12,7 @@ type IsType<A, B> = (<T>() => T extends A ? 1 : 2) extends
 type IsNotType<A, B> = IsType<A, B> extends true ? false : true;
 
 type IsNotReadonly<T, K extends keyof T> =
-  // Compare: If { [P in K]: T[P] } is assignable to { -readonly [P in K]: T[P] }
-  // then K is not readonly
-  { [P in K]: T[P] } extends { -readonly [P in K]: T[P] }
-    ? true
-    : false;
+  IsType<Pick<T, K>, { -readonly [P in K]: T[P] }>;
 
 
 // Checks if type A is assignable to B
