@@ -22,6 +22,12 @@ if (!fs.existsSync(binary)) {
 
 const result = spawnSync(binary, process.argv.slice(2), {
   stdio: "inherit",
+  env: {
+    ...process.env,
+    // Point the Go binary at the tsc bundled with this package, so users
+    // don't need a global TypeScript install.
+    TSKOANS_TSC: resolveBundledTsc() ?? process.env.TSKOANS_TSC,
+  },
 });
 
 if (result.error) {
@@ -30,3 +36,12 @@ if (result.error) {
 }
 
 process.exit(result.status ?? 0);
+
+function resolveBundledTsc() {
+  try {
+    // Resolves to e.g. <pkg>/node_modules/typescript/bin/tsc
+    return require.resolve("typescript/bin/tsc");
+  } catch {
+    return null;
+  }
+}

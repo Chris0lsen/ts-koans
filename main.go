@@ -300,7 +300,7 @@ func compileTypeScript(tmpDir, userCode string, ex internal.Exercise, program *t
 		return err
 	}
 
-	tscCmd := exec.Command("tsc", typecheckPath, "--target", "es2020", "--module", "commonjs", "--outDir", tmpDir)
+	tscCmd := tscCommand(typecheckPath, tmpDir)
 	tscCmd.Dir = tmpDir
 
 	var tscStderrBuf, tscStdoutBuf bytes.Buffer
@@ -694,9 +694,27 @@ func nodeAvailable() bool {
 }
 
 func tscAvailable() bool {
+	// Check if ts is bundled from the npm install
+	if bundled := os.Getenv("TSKOANS_TSC"); bundled != "" {
+		if _, err := os.Stat(bundled); err == nil {
+			return true
+		}
+	}
 	cmd := exec.Command("tsc", "--version")
 	err := cmd.Run()
 	return err == nil
+}
+
+// tscCommand builds the tsc invocation. If TSKOANS_TSC is set (e.g. by the
+// npm shim pointing at the bundled typescript package), invoke that script
+// via node so it works cross-platform. Otherwise fall back to a `tsc` binary
+// on PATH (for users running from source or a GitHub release).
+func tscCommand(typecheckPath, outDir string) *exec.Cmd {
+	args := []string{typecheckPath, "--target", "es2020", "--module", "commonjs", "--outDir", outDir}
+	if bundled := os.Getenv("TSKOANS_TSC"); bundled != "" {
+		return exec.Command("node", append([]string{bundled}, args...)...)
+	}
+	return exec.Command("tsc", args...)
 }
 
 func main() {
