@@ -9,6 +9,8 @@ Inspired by [Elixir Koans](https://github.com/elixirkoans/elixir-koans), ts-koan
 
 Note that if you use a version manager such as [nvm](https://github.com/nvm-sh/nvm), [n](https://github.com/tj/n), [asdf](https://asdf-vm.com/) or [mise](https://mise.jdx.dev/), your `tsc` installation might not be globally available. Please make sure they're in your `$PATH` before running ts-koans.
 
+Installing from npm (either globally or locally) will download `tsc` and make it available, so running `ts-koans` will use the one installed by npm, if available.
+
 ## Running
 
 ### NPM
