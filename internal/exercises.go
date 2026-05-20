@@ -110,7 +110,7 @@ type _Check = Assert<IsType<typeof tremendous, bigint>>;
 			hint: `const theOne: ` + kw.Render("symbol") + ` = Symbol("Linji"); 
 const theOnly: ` + kw.Render("symbol") + ` = Symbol("Linji");`,
 			StarterCode: `// A Symbol is truly unique
-const theOne: ???= Symbol("Linji"); 
+const theOne: ???= Symbol("Linji");
 const theOnly: ??? = Symbol("Linji");
 theOne !== theOnly`,
 			TestScript: `
@@ -604,7 +604,7 @@ type _CheckParam = Assert<IsType<Parameters<typeof narrow>[0], string | number>>
 			StarterCode: `function greet(name: string | ???): string {
 			  if (name === null) {
 			    return "Hello, monk!";
-			  } else {	
+			  } else {
 			    return "Hello, " + name + "!";
 			  }
 }`,
@@ -708,9 +708,7 @@ function getArea(shape: Shape) {
     case "square":
       return shape.length ** 2; // TypeScript knows shape is Square here
   }
-}
-
-			`,
+}`,
 			TestScript: `const myCircle = { kind: 'circle', radius: 5 };
 const mySquare = { kind: 'square', length: 5 };
 if (myCircle.kind !== "circle") throw new Error("myCircle should have kind 'circle'");
@@ -734,8 +732,7 @@ const val: MyType = { foo: "hi", bar: 123 };`,
   foo: string;
   bar: number;
 }
-const val: MyType = { foo: "hi", bar: 123 };  
-`,
+const val: MyType = { foo: "hi", bar: 123 };`,
 			TestScript: `
 if (val.foo !== "hi") throw new Error("foo property should be 'hi'");
 if (val.bar !== 123) throw new Error("bar property should be 123");
@@ -781,8 +778,7 @@ type _Check = Assert<IsType<MyTypeOrNumber, MyType | number>>;
 type Monk = Person ??? {
   isMeditating: boolean;
 }
-const m: Monk = { name: "Linji", isMeditating: true };  
-`,
+const m: Monk = { name: "Linji", isMeditating: true };`,
 			TestScript: `
 if (m.name !== "Linji") throw new Error("Monk should have correct name");
 if (!m.isMeditating) throw new Error("Monk should have isMeditating property true");
@@ -835,8 +831,7 @@ type _Check1 = Assert<IsType<Constancy, { foo: boolean }>>;
   foo: string;
   bar: number;
 }
-const obj: MyInterface = { foo: "hello", bar: 123 };
-`,
+const obj: MyInterface = { foo: "hello", bar: 123 };`,
 			TestScript: `
 if (obj.foo !== "hello") throw new Error("foo should be 'hello'");
 if (obj.bar !== 123) throw new Error("bar should be 123");
@@ -860,8 +855,7 @@ type _Check = Assert<IsType<MyInterface, { foo: string; bar: number }>>;
 interface Monk ??? Person {
   isMeditating: boolean
 }
-const m: Monk = { name: "Huineng", isMeditating: true };
-`,
+const m: Monk = { name: "Huineng", isMeditating: true };`,
 			TestScript: `
 if (m.name !== "Huineng") throw new Error("Monk should have correct name");
 if (!m.isMeditating) throw new Error("Monk should have isMeditating property true");
@@ -885,8 +879,7 @@ type _Check = Assert<IsType<Monk, {name: string, isMeditating: boolean }>>;
 ??? MyInterface {
   bar: number;
 }
-const obj: MyInterface = { foo: "hi", bar: 5 };
-`,
+const obj: MyInterface = { foo: "hi", bar: 5 };`,
 			TestScript: `
 if (obj.foo !== "hi") throw new Error("foo should be 'hi'");
 if (obj.bar !== 5) throw new Error("bar should be 5");
@@ -928,8 +921,7 @@ type _Check = Assert<IsType<Parameters<typeof foo>[0], [string, number]>>;
 			StarterCode: `function foo(myTuple: ??? [string, number]): void {
   console.log(myTuple[0] + " will always be a string")
 }
-const tuple: Readonly<[string, number]> = ["foo", 42] as const;
-`,
+const tuple: Readonly<[string, number]> = ["foo", 42] as const;`,
 			TestScript: `
 // Should accept a readonly tuple
 foo(tuple);
@@ -1327,8 +1319,7 @@ type _Str = Assert<IsType<typeof strBox, Box<string>>>;
 }`,
 			StarterCode: `function identity<T>(value: T): ??? {
 	return value;
-}
-	`,
+}`,
 			TestScript: `
 if (identity(123) !== 123) throw new Error("identity(123) should return 123");
 if (identity("hello") !== "hello") throw new Error('identity("hello") should return "hello"');
@@ -1377,10 +1368,9 @@ type _Check2 = Assert<IsType<typeof _age, number>>;
 }
 
 const defaultBox: Box = { value: "hello" };
-`,
+// The default can be overridden:
+const numberBox: Box<number> = { value: 123 };`,
 			TestScript: `
-const defaultBox = { value: "hello" };
-const numberBox = { value: 123 };
 if (defaultBox.value !== "hello") throw new Error("defaultBox.value should be 'hello'");
 if (numberBox.value !== 123) throw new Error("numberBox.value should be 123");
 `,
@@ -1610,7 +1600,6 @@ type _Check = Assert<IsNotType<keyof UserPreview, "email">>;
 type _Check2 = Assert<IsType<UserPreview, { id: number; username: string }>>;
 `,
 		},
-
 		{
 			ID:          "utility-types-omit",
 			title:       "Utility Types: `Omit`",
@@ -1663,8 +1652,8 @@ const user: ???<User> = {
 	id: 1,
 	username: "Dongshan",
 	email: "Dongshan@shouchu.com"
-};
-`, TestScript: `
+};`,
+			TestScript: `
 if (user.username !== "Dongshan") throw new Error("username should be 'Dongshan'");
 if (user.email !== "Dongshan@shouchu.com") throw new Error("email should be 'Dongshan@shouchu.com'");
 `,
@@ -1717,8 +1706,8 @@ type _Check = Assert<IsType<typeof pageViews, Record<Page, number>>>;
 }
 
 type User = ???<typeof getUser>
-const user: User = getUser();
-`, TestScript: `
+const user: User = getUser();`,
+			TestScript: `
 if (user.username !== "Shitou") throw new Error("username should be 'Shitou'");
 if (user.email !== "shitou@example.com") throw new Error("email should be 'shitou@example.com'");
 `,
