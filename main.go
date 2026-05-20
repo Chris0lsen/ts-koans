@@ -14,11 +14,11 @@ import (
 	"strings"
 	"time"
 
-	"github.com/charmbracelet/bubbles/list"
-	"github.com/charmbracelet/bubbles/spinner"
-	"github.com/charmbracelet/bubbles/textarea"
-	tea "github.com/charmbracelet/bubbletea"
-	"github.com/charmbracelet/lipgloss"
+	"charm.land/bubbles/v2/list"
+	"charm.land/bubbles/v2/spinner"
+	"charm.land/bubbles/v2/textarea"
+	tea "charm.land/bubbletea/v2"
+	"charm.land/lipgloss/v2"
 
 	"github.com/chris0lsen/ts-koans/internal"
 
@@ -63,6 +63,7 @@ type model struct {
 	height          int
 	running         bool
 	spinner         spinner.Model
+	showHint        bool
 	persistentState internal.PersistentState
 	debugMode       bool
 	debugLog        []string
@@ -168,7 +169,7 @@ func (m *model) recalcEditorHeight() {
 		debugPanelHeight = lipgloss.Height(debugStyle.Width(m.width - panelHorizChrome).Render(strings.Repeat("\n", debugPanelLines-1)))
 	}
 
-	help := helpStyle.Render("[esc] Back | [F5] Run | [shift + ← / → ] Prev/Next Exercise")
+	help := helpStyle.Render("[esc] Back | [F5] Run | [ctrl + r] Reset Exercise | [ctrl + h] Hint | [ctrl + ← / → ] Prev/Next Exercise")
 
 	fixedHeight := lipgloss.Height(header) +
 		lipgloss.Height(desc) +
@@ -414,8 +415,9 @@ func (m model) updateMenu(msg tea.Msg) (tea.Model, tea.Cmd) {
 	case tea.MouseMsg:
 		// Don't intercept clicks while the filter input is focused
 		if !m.list.SettingFilter() {
-			if msg.Action == tea.MouseActionPress && msg.Button == tea.MouseButtonLeft {
-				slot := (msg.Y - m.listHeaderHeight()) / listItemHeight
+			mouse := msg.Mouse()
+			if mouse.Button == tea.MouseLeft {
+				slot := (mouse.Y - m.listHeaderHeight()) / listItemHeight
 				page := m.list.Paginator.Page
 				perPage := m.list.Paginator.PerPage
 				idx := page*perPage + slot
@@ -481,21 +483,22 @@ func (m model) updateEditor(msg tea.Msg) (tea.Model, tea.Cmd) {
 		m.width = msg.Width
 		m.height = msg.Height
 		m.recalcEditorHeight()
-		m.textarea.SetCursor(0)
+		m.textarea.SetCursorColumn(0)
 		return m, nil
 	case tea.MouseMsg:
 		// Click to move cursor
-		if msg.Action == tea.MouseActionPress && msg.Button == tea.MouseButtonLeft {
+		mouse := msg.Mouse()
+		if mouse.Button == tea.MouseLeft {
 			editorBottomY := m.editorTopY + m.textarea.Height() - 1
 			contentLeftX := editorLeftX + m.gutterWidth
 
 			// Get code coordinates
-			targetLine := msg.Y - m.editorTopY + m.start
-			targetCol := msg.X - contentLeftX
+			targetLine := mouse.Y - m.editorTopY + m.start
+			targetCol := mouse.X - contentLeftX
 
 			// Bounds checks (ignore clicks outside editor)
 			totalLines := len(strings.Split(m.textarea.Value(), "\n"))
-			if msg.Y < m.editorTopY || msg.Y >= editorBottomY || msg.X < contentLeftX || targetLine >= totalLines {
+			if mouse.Y < m.editorTopY || mouse.Y >= editorBottomY || mouse.X < contentLeftX || targetLine >= totalLines {
 				return m, nil
 			}
 			if targetCol < 0 {
@@ -505,11 +508,11 @@ func (m model) updateEditor(msg tea.Msg) (tea.Model, tea.Cmd) {
 			// Move cursor in textarea
 			currentLine := m.textarea.Line()
 			for currentLine < targetLine {
-				m.textarea, _ = m.textarea.Update(tea.KeyMsg{Type: tea.KeyDown})
+				m.textarea, _ = m.textarea.Update(tea.KeyPressMsg{Code: tea.KeyDown})
 				currentLine++
 			}
 			for currentLine > targetLine {
-				m.textarea, _ = m.textarea.Update(tea.KeyMsg{Type: tea.KeyUp})
+				m.textarea, _ = m.textarea.Update(tea.KeyPressMsg{Code: tea.KeyUp})
 				currentLine--
 			}
 
@@ -520,7 +523,7 @@ func (m model) updateEditor(msg tea.Msg) (tea.Model, tea.Cmd) {
 				targetCol = lineLen
 			}
 
-			m.textarea.SetCursor(targetCol)
+			m.textarea.SetCursorColumn(targetCol)
 
 			m.calculateCursorCoordinates()
 
@@ -533,6 +536,10 @@ func (m model) updateEditor(msg tea.Msg) (tea.Model, tea.Cmd) {
 			m.saveState()
 			return m, tea.Quit
 		case "esc":
+			if m.showHint {
+				m.showHint = false
+				return m, nil
+			}
 			m.outputLines = nil
 			m.saveState()
 			m.state = menu
@@ -548,10 +555,23 @@ func (m model) updateEditor(msg tea.Msg) (tea.Model, tea.Cmd) {
 			m.running = true
 			m.recalcEditorHeight()
 			return m, tea.Batch(m.spinner.Tick, runExerciseStreamed(userCode, m.program, m.exercises[m.selected]))
-		case "shift+right":
+		case "ctrl+r":
+			m.textarea.SetValue(m.exercises[m.selected].StarterCode)
+			// Reset completion status in persistentState
+			if m.persistentState.Completed == nil {
+				m.persistentState.Completed = make(map[int]bool)
+			}
+			m.persistentState.Completed[m.selected] = false
+			m.textarea.SetCursorColumn(0)
+			m.calculateCursorCoordinates()
+			return m, nil
+		case "ctrl+h":
+			m.showHint = !m.showHint
+			return m, nil
+		case "ctrl+right":
 			m.switchToExercise((m.selected + 1) % len(m.exercises))
 			return m, nil
-		case "shift+left":
+		case "ctrl+left":
 			m.switchToExercise((m.selected - 1 + len(m.exercises)) % len(m.exercises))
 			return m, nil
 		}
@@ -582,6 +602,8 @@ func (m *model) switchToExercise(i int) {
 	} else {
 		m.textarea.SetValue(m.exercises[i].StarterCode)
 	}
+	// clear console
+	m.outputLines = nil
 	m.recalcEditorHeight()
 }
 
@@ -637,12 +659,23 @@ func (m model) renderOutputPanel(boxHeight int) string {
 	return style.Render(strings.Join(renderedLines, "\n"))
 }
 
-func (m model) View() string {
+func (m model) View() tea.View {
+	var v tea.View
+	v.AltScreen = true
+	v.MouseMode = tea.MouseModeCellMotion
 	switch m.state {
 	case menu:
-		return m.list.View() + "\n\n[enter] Start | [q] Quit | [ ← / → ] Prev/Next Page | [/] Filter"
+		v.SetContent(m.list.View() + "\n\n[enter] Start | [q] Quit | [ ← / → ] Prev/Next Page | [/] Filter")
+		return v
 	case editor:
-		header := headerStyle.Render(m.exercises[m.selected].Title())
+		// Prepend title with badge if exercise is completed
+		var headerText string
+		if m.persistentState.Completed[m.selected] == true {
+			headerText = "✅ " + m.exercises[m.selected].Title()
+		} else {
+			headerText = m.exercises[m.selected].Title()
+		}
+		header := headerStyle.Render(headerText)
 		desc := descStyle.Render(m.exercises[m.selected].Description())
 
 		debugPanel := ""
@@ -656,7 +689,7 @@ func (m model) View() string {
 			debugPanel = debugStyle.Width(m.width - panelHorizChrome).Render(strings.Join(logs, "\n"))
 		}
 
-		help := helpStyle.Render("[esc] Back | [F5] Run | [shift + ← / → ] Prev/Next Exercise")
+		help := helpStyle.Render("[esc] Back | [F5] Run | [ctrl + r] Reset Exercise | [ctrl + h] Hint | [ctrl + ← / → ] Prev/Next Exercise")
 
 		output := m.renderOutputPanel(m.outputHeight)
 
@@ -681,9 +714,35 @@ func (m model) View() string {
 		}
 		panels = append(panels, help)
 
-		return lipgloss.JoinVertical(lipgloss.Left, panels...)
+		bg := lipgloss.JoinVertical(lipgloss.Left, panels...)
+
+		// With the modal disabled, just render the background
+		if !m.showHint {
+			v.SetContent(bg)
+			return v
+		}
+
+		hint := lipgloss.NewStyle().
+			Border(lipgloss.RoundedBorder()).
+			Width(72).
+			Height(8).
+			Render(m.exercises[m.selected].Hint())
+
+		// Center the hint over the base using a Compositor with two layers.
+		hintW, hintH := lipgloss.Size(hint)
+		x := (m.width - hintW) / 2
+		y := (m.height - hintH) / 2
+
+		composite := lipgloss.NewCompositor(
+			lipgloss.NewLayer(bg),
+			lipgloss.NewLayer(hint).X(x).Y(y).Z(1),
+		)
+		v.SetContent(composite.Render())
+		return v
+
 	default:
-		return "Loading..."
+		v.SetContent("Loading...")
+		return v
 	}
 }
 
@@ -728,7 +787,7 @@ func main() {
 		os.Exit(1)
 	}
 
-	debug := flag.Bool("debug", false, "enable debug mode")
+	debugFlag := flag.Bool("debug", false, "enable debug mode")
 	flag.Parse()
 
 	state, err := internal.LoadState()
@@ -736,10 +795,10 @@ func main() {
 		fmt.Fprintln(os.Stderr, "Warning: Could not load previous state:", err)
 	}
 	m := initialModel(state)
-	m.debugMode = *debug
+	m.debugMode = *debugFlag
 	m.debugLog = append(m.debugLog, "Debug panel is working!")
 
-	p := tea.NewProgram(m, tea.WithAltScreen(), tea.WithMouseCellMotion())
+	p := tea.NewProgram(m)
 	go func() {
 		p.Send(setProgramMsg{program: p})
 	}()

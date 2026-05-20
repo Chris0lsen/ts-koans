@@ -1,12 +1,13 @@
 package internal
 
-import "github.com/charmbracelet/lipgloss"
+import "charm.land/lipgloss/v2"
 
 type Exercise struct {
 	ID             string
 	title          string
 	description    string
 	info           string
+	hint           string
 	StarterCode    string
 	TestScript     string
 	Label          string
@@ -23,6 +24,7 @@ func (e Exercise) Title() string {
 func (e Exercise) Description() string { return e.description }
 func (e Exercise) Info() string        { return e.info }
 func (e Exercise) FilterValue() string { return e.title }
+func (e Exercise) Hint() string        { return e.hint }
 
 // Styles for the info panel
 var (
@@ -39,6 +41,7 @@ func Exercises() []Exercise {
 			Label:       "",
 			description: "An entity can have the type `string`",
 			info:        `A ` + kw.Render("string") + ` is a sequence of characters, or even a single character. For instance, ` + code.Render("Linji") + ` is a string, as is ` + code.Render("a") + `. Even ` + code.Render("\"\"") + ` is a string, albeit an empty one. Got something that looks like a number, but it's wrapped in quotes, like ` + code.Render("123") + `? That's a string too!`,
+			hint:        `const monk: ` + kw.Render("string") + ` = "Linji";`,
 			StarterCode: `const monk: ??? = "Linji";`,
 			TestScript: `
 if (typeof monk !== "string") throw new Error("monk should be a string, got typeof monk: " + typeof monk + ", value: " + monk);
@@ -55,6 +58,7 @@ type _Check = Assert<IsType<typeof monk, string>>;
 			Label:       "",
 			description: "An entity can have the type `number`",
 			info:        `A ` + kw.Render("number") + ` in TS (or JS) can represent both integers and floating-point values. For example, ` + code.Render("1") + `, ` + code.Render("-5") + `, and ` + code.Render("3.14") + ` are all numbers. TS also supports special numeric values like ` + code.Render("Infinity") + ` and ` + code.Render("NaN") + ` (Not a Number). However, TS does ` + bold.Render("not") + ` have separate types for integers and floats; they are all just 'number'.`,
+			hint:        `const handsClapping: ` + kw.Render("number") + ` = 1;`,
 			StarterCode: `const handsClapping: ??? = 1;`,
 			TestScript: `
 if (typeof handsClapping !== "number") throw new Error("handsClapping should be a number");
@@ -71,6 +75,7 @@ type _Check = Assert<IsType<typeof handsClapping, number>>;
 			Label:       "",
 			description: "An entity can have the type `boolean`",
 			info:        `A ` + kw.Render("boolean") + ` represents a logical entity that can be either ` + code.Render("true") + ` or ` + code.Render("false") + `. It's commonly used in conditional statements and logical operations.`,
+			hint:        `const nature: ` + kw.Render("boolean") + ` = Boolean(false);`,
 			StarterCode: `const nature: ??? = Boolean(false);`,
 			TestScript: `
 if (typeof nature !== "boolean") throw new Error("nature should be a boolean");
@@ -86,6 +91,7 @@ type _Check = Assert<IsType<typeof nature, boolean>>;
 			Label:       "",
 			description: "A very large entity can have the type `bigint`",
 			info:        `A ` + kw.Render("bigint") + ` represents an integer with ` + bold.Render("arbitrary precision") + `. It's useful for working with very large numbers that exceed the safe integer limit for the "number" type. Like big integers! You can create a bigint by appending 'n' to the end of an integer literal (like ` + code.Render("100n") + `), or by using the BigInt constructor.`,
+			hint:        `const tremendous: ` + kw.Render("bigint") + ` = BigInt(100);`,
 			StarterCode: `const tremendous: ??? = BigInt(100);`,
 			TestScript: `
 if (typeof tremendous !== "bigint") throw new Error("tremendous should be a bigint");
@@ -101,6 +107,8 @@ type _Check = Assert<IsType<typeof tremendous, bigint>>;
 			Label:       "",
 			description: "A unique entity can be created with the special function `Symbol()`, and its type is `symbol`.",
 			info:        `A ` + kw.Render("symbol") + ` is a unique and immutable primitive value. This means only one of a kind can exist in your program! Also, you cannot loop over the properties of a Symbol, and they are not included in ` + code.Render("JSON.stringify") + ` output. They're often used as unique keys for object properties to avoid name collisions.`,
+			hint: `const theOne: ` + kw.Render("symbol") + ` = Symbol("Linji"); 
+const theOnly: ` + kw.Render("symbol") + ` = Symbol("Linji");`,
 			StarterCode: `// A Symbol is truly unique
 const theOne: ???= Symbol("Linji"); 
 const theOnly: ??? = Symbol("Linji");
@@ -121,6 +129,8 @@ type _Check2 = Assert<IsType<typeof theOnly, symbol>>;
 			Label:       "",
 			description: "An even more unique entity; even its type is unique",
 			info:        `A ` + kw.Render("unique symbol") + ` is a subtype of symbol that represents a single, specific symbol. You can create a unique symbol using the 'unique symbol' type on a const declaration. This means that the type is not just 'symbol', but a specific, unique type that can ` + bold.Render("only") + ` be assigned to itself.`,
+			hint: `const uniqueOne: ` + kw.Render("unique") + ` symbol = Symbol("one");
+const uniqueTwo: ` + kw.Render("unique") + ` symbol = Symbol("two");`,
 			StarterCode: `const uniqueOne: ??? symbol = Symbol("one");
 const uniqueTwo: ??? symbol = Symbol("two");
 
@@ -150,6 +160,9 @@ type _Check5 = Assert<IsNotType<typeof uniqueOne, typeof uniqueTwo>>;
 			Label:       "",
 			description: "An entity can have `any` type",
 			info:        `The ` + kw.Render("any") + ` type is a powerful escape hatch that allows you to opt out of type checking for a variable. When a variable is of type ` + code.Render("any") + `, it can hold values of any type, and you can perform any operation on it without TypeScript raising an error. However, using ` + code.Render("any") + ` should be done with caution, as it can lead to runtime errors if not used carefully. It's often better to use more specific types or ` + code.Render("unknown") + ` when you want to allow for flexibility while still maintaining some level of type safety.`,
+			hint: `let anything: ` + kw.Render("any") + ` = "one"; 
+anything = 2;
+anything = false;`,
 			StarterCode: `let anything: ??? = "one"; 
 anything = 2;
 anything = false;`,
@@ -166,6 +179,7 @@ type _Check = Assert<IsType<typeof anything, any>>;
 			Label:       "",
 			description: "An entity can have `null` type",
 			info:        `The ` + kw.Render("null") + ` type represents the intentional absence of any object value. It's often used to indicate that a variable should be empty or have no value. This will become more useful when we learn about union types a little later.`,
+			hint:        `let nothing: ` + kw.Render("null") + ` = null;`,
 			StarterCode: `let nothing: ??? = null;`,
 			TestScript: `
 if (nothing !== null) throw new Error("nothing should be null");
@@ -179,6 +193,7 @@ type _Check = Assert<IsType<typeof nothing, null>>;
 			title:       "Primitives: undefined",
 			description: "An unset entity has the type `undefined`",
 			info:        `When an entity is ` + kw.Render("undefined") + `, it means it has been declared but not assigned a value. This is different from ` + code.Render("null") + `, which represents the intentional absence of any object value. In JS and TS, if you declare a variable without initializing it, it will have the value ` + code.Render("undefined") + ` by default. Additionally, if you try to access a property that doesn't exist on an object, it will also return ` + code.Render("undefined") + `.`,
+			hint:        `let unset: ` + kw.Render("undefined") + ` = undefined;`,
 			StarterCode: `let unset: ??? = undefined;`,
 			TestScript: `
 if (unset !== undefined) throw new Error("unset should be undefined");
@@ -195,6 +210,7 @@ type _Check = Assert<IsType<typeof unset, undefined>>;
 			Label:       "",
 			description: "An array of entities may be defined as an Array",
 			info:        `An ` + kw.Render("array") + ` is an ordered collection of values. In JS, arrays can hold values of any type, and even several different types at once! In TS, however, we can specify the type of values an array can hold.`,
+			hint:        `let anArray: ` + kw.Render("Array") + `<string> = ["one", "two"];`,
 			StarterCode: `let anArray: ???<string> = ["one", "two"]; `,
 			TestScript: `
 if (!Array.isArray(anArray)) throw new Error("anArray should be an array");
@@ -211,6 +227,7 @@ type _Check = Assert<IsType<typeof anArray, Array<string>>>;
 			Label:       "",
 			description: "A readonly array may never change",
 			info:        `A ` + kw.Render("ReadonlyArray") + ` is an array that cannot be modified after its creation. This means you cannot add, remove, or change elements in the array. It's useful for ensuring that data remains immutable and preventing accidental modifications.`,
+			hint:        `let aReadonlyArray: ` + kw.Render("ReadonlyArray") + `<string> = ["steadfast", "unchanging"];`,
 			StarterCode: `let aReadonlyArray: ???<string> = ["steadfast", "unchanging"];`,
 			TestScript: `
 if (aReadonlyArray.length !== 2) throw new Error("aReadonlyArray should remain length 2");
@@ -226,6 +243,9 @@ type _Check = Assert<IsType<typeof aReadonlyArray, ReadonlyArray<string>>>;
 			Label:       "",
 			description: "A function can accept a string",
 			info:        `In addition to defining the types of variables, we can define the types that our functions will expect! This way, the TS compiler can make sure we're only passing strings to functions that expect strings, for instance.`,
+			hint: `function hello(name: ` + kw.Render("string") + `) {
+  return "Hello " + name;
+}`,
 			StarterCode: `function hello(name: ???) {
   return "Hello " + name;
 }`,
@@ -242,6 +262,9 @@ type _Check = Assert<IsType<Parameters<typeof hello>[0], string>>;
 			Label:       "",
 			description: "A function can accept a number",
 			info:        `Telling this function it will always receive a number means we can perform number-like actions on it without worry!`,
+			hint: `function foo(bar: ` + kw.Render("number") + `) {
+  return 100 + bar;
+}`,
 			StarterCode: `function foo(bar: ???) {
   return 100 + bar;
 }`,
@@ -258,6 +281,9 @@ type _Check = Assert<IsType<Parameters<typeof foo>[0], number>>;
 			Label:       "",
 			description: "A function can accept a boolean value",
 			info:        `This little toy function is purely pedantic. Technically ` + code.Render("!!value") + ` would work with any value, not just a boolean! It's nifty shorthand to convert a value into a boolean.`,
+			hint: `function isTrue(value: ` + kw.Render("boolean") + `) {
+  return !!value ? "It is true" : "It is untrue";
+}`,
 			StarterCode: `function isTrue(value: ???) {
   return !!value ? "It is true" : "It is untrue";
 }`,
@@ -275,6 +301,9 @@ type _Check = Assert<IsType<Parameters<typeof isTrue>[0], boolean>>;
 			Label:       "",
 			description: "A function can accept `any` value",
 			info:        `This is another one to be careful with. Telling the compiler to expect ` + code.Render("any") + ` value means it can't protect us from ourselves. Also, see that ` + code.Render("typeof") + ` operator? We'll play with that more later too!`,
+			hint: `function anything(value: ` + kw.Render("any") + `) {
+  return typeof value;
+}`,
 			StarterCode: `function anything(value: ???) {
   return typeof value;
 }`,
@@ -293,6 +322,9 @@ type _Check = Assert<IsType<Parameters<typeof anything>[0], any>>;
 			Label:       "",
 			description: "A function can accept an array of values of many types",
 			info:        `Of course, we can also pass arrays as arguments. An equivalent syntax is ` + code.Render("string[]") + `. You can use whichever you prefer!`,
+			hint: `function theyAreTrue(values: ` + kw.Render("Array") + `<string>) {
+  return values.every(value => typeof value === "string")
+}`,
 			StarterCode: `function theyAreTrue(values: ???<string>) {
   return values.every(value => typeof value === "string")
 }`,
@@ -311,6 +343,9 @@ type _Check = Assert<IsType<Parameters<typeof theyAreTrue>[0], Array<string>>>;
 			Label:       "",
 			description: "A function can return a string",
 			info:        `Not only can we type the values going into a function - we can also define what should be returned.`,
+			hint: `function stringReturner(value: string): ` + kw.Render("string") + ` {
+  return value.toUpperCase()
+}`,
 			StarterCode: `function stringReturner(value: string): ??? {
   return value.toUpperCase()
 }`,
@@ -327,6 +362,9 @@ type _Check = Assert<IsType<ReturnType<typeof stringReturner>, string>>;
 			Label:       "",
 			description: "A function can return a number",
 			info:        `TypeScript is all about keeping us safe from ourselves. If we tried to return something other than a number here, the compiler would warn us.`,
+			hint: `function numberReturner(value: number): ` + kw.Render("number") + ` {
+  return value * 2;
+}`,
 			StarterCode: `function numberReturner(value: number): ??? {
   return value * 2;
 }`,
@@ -343,6 +381,9 @@ type _Check = Assert<IsType<ReturnType<typeof numberReturner>, number>>;
 			Label:       "",
 			description: "A function can return a boolean value",
 			info:        `Remember to take ` + bold.Render("breaks") + `! Drink some water, stretch!`,
+			hint: `function boolReturner(value: boolean): ` + kw.Render("boolean") + ` {
+  return !value;
+}`,
 			StarterCode: `function boolReturner(value: boolean): ??? {
   return !value;
 }`,
@@ -360,6 +401,9 @@ type _Check = Assert<IsType<ReturnType<typeof boolReturner>, boolean>>;
 			Label:       "",
 			description: "A function can return any value",
 			info:        `Just because you can, does not mean you should.`,
+			hint: `function anyReturner(value: any): ` + kw.Render("any") + ` {
+  return value;
+}`,
 			StarterCode: `function anyReturner(value: any): ??? {
   return value;
 }`,
@@ -376,7 +420,10 @@ type _Check = Assert<IsType<ReturnType<typeof anyReturner>, any>>;
 			title:       "Return Type Annotations: void",
 			Label:       "",
 			description: "A function can return to the void",
-			info:        `Sometimes we value functions for thir side effects, and ask for nothing in return.`,
+			info:        `Sometimes we value functions for their side effects, and ask for nothing in return.`,
+			hint: `function voidReturner(value: any): ` + kw.Render("void") + ` {
+  return;
+}`,
 			StarterCode: `function voidReturner(value: any): ??? {
   return;
 }`,
@@ -394,6 +441,10 @@ type _Check = Assert<IsType<ReturnType<typeof voidReturner>, void>>;
 			Label:       "",
 			description: "Though nameless, anonymous functions must still abide by typing rules",
 			info:        `Even though there's no specific type annotation here, the compiler sees what you're doing. Many, though, will say that Explicit is better than Implicit.`,
+			hint: `const monks = ["Zhaozhou", "Huineng", ` + code.Render("\"Linji\"") + `]
+monks.forEach((monk) => {
+  console.log(monk + " practices typescript")
+})`,
 			StarterCode: `const monks = ["Zhaozhou", "Huineng", ???]
 monks.forEach((monk) => {
   console.log(monk + " practices typescript")
@@ -413,6 +464,9 @@ type _Check = Assert<IsType<typeof monks, string[]>>;
 			Label:       "",
 			description: "A function can accept an object of a given shape",
 			info:        `Okay, technically there are a few JS quirks that could come into play here. Like "adding" a number to a string results in a concatenation operation. But let's not stray from the path.`,
+			hint: `function foo(value: {bar: string, baz: ` + kw.Render("string") + `}): string {
+  return value.bar + value.baz;
+}`,
 			StarterCode: `function foo(value: {bar: string, baz: ???}): string {
   return value.bar + value.baz;
 }`,
@@ -429,6 +483,10 @@ type _Check = Assert<IsType<Parameters<typeof foo>[0], { bar: string; baz: strin
 			Label:       "",
 			description: "A function can accept an object with immutable properties",
 			info:        `Our friend ` + code.Render("readonly") + ` is back!`,
+			hint: `function foo(value: {bar: string, ` + kw.Render("readonly") + ` baz: string}): void {
+  value.bar = "I can change";
+  value.baz !== "I cannot";
+}`,
 			StarterCode: `function foo(value: {bar: string, ??? baz: string}): void {
   value.bar = "I can change";
   value.baz !== "I cannot";
@@ -455,6 +513,13 @@ type _Check = Assert<IsType<{ bar: string, readonly baz: string }, Parameters<ty
 			Label:       "",
 			description: "A function may accept questionable properties",
 			info:        `If you attempt to access the value of an ` + kw.Render("optional") + ` property, you'll get undefined.`,
+			hint: `// Let foo accept an optional property called bar
+function foo(value: { ` + kw.Render("bar?") + `: string }): boolean {
+  if ("bar" in value) {
+    return typeof value.bar === "string";
+  }
+  return true;
+}`,
 			StarterCode: `// Let foo accept an optional property called bar
 function foo(value: { ???: string }): boolean {
   // bar might be missing!
@@ -479,6 +544,9 @@ type _Check = Assert<IsType<{ bar?: string }, Parameters<typeof foo>[0]>>;
 			Label:       "",
 			description: "Several types may exist in harmony with `|`",
 			info:        `The ` + kw.Render("union") + ` operator ` + code.Render("|") + ` allows us to say that a value can be one of several types. It's common in TS to reach for union types instead of ` + code.Render("any") + ` or an ` + code.Render("enum") + ` (which we'll discuss later).`,
+			hint: `let something: string ` + kw.Render("|") + ` number;
+something = "Hello";
+something = 100;`,
 			StarterCode: `let something: string ??? number;
 something = "Hello";
 something = 100;`,
@@ -497,6 +565,13 @@ type _Check = Assert<IsAssignable<typeof something, string | number>>;
 			Label:       "",
 			description: "One may narrow the union. The compiler will deduce the most specific type.",
 			info:        `By checking the type of ` + code.Render("foo") + ` at runtime, we can "narrow" its type and guarantee safety within a given branch.`,
+			hint: `function narrow(foo: number | string): true {
+  if (typeof foo === "string") {
+    return (typeof foo === "string") as true;
+  } else {
+   return (typeof foo === ` + code.Render("\"number\"") + `) as true;
+  }
+}`,
 			StarterCode: `function narrow(foo: number | string): true {
   if (typeof foo === "string") {
     // In this branch, TS knows foo is a string
@@ -519,6 +594,13 @@ type _CheckParam = Assert<IsType<Parameters<typeof narrow>[0], string | number>>
 			Label:       "",
 			description: "A common use of union types is to represent nullable values",
 			info:        `By including ` + code.Render("null") + ` in the union, we can represent values that might be absent. This is often more precise than using ` + code.Render("any") + ` and allows us to take advantage of TypeScript's type checking.`,
+			hint: `function greet(name: string | ` + kw.Render("null") + `): string {
+  if (name === null) {
+    return "Hello, monk!";
+  } else {
+    return "Hello, " + name + "!";
+  }
+}`,
 			StarterCode: `function greet(name: string | ???): string {
 			  if (name === null) {
 			    return "Hello, monk!";
@@ -537,6 +619,10 @@ if (greet(null) !== "Hello, monk!") throw new Error('greet(null) should return "
 			Label:       "",
 			description: "The nullish coalescing operator `??` can be used to provide a default value when dealing with nullable types",
 			info:        `Why use ` + code.Render("??") + ` instead of ` + code.Render("||") + `? It's a good question. The ` + code.Render("||") + ` operator will return the right-hand side if the left-hand side is falsy, which includes values like ` + code.Render("0") + `, ` + code.Render("\"\"") + `, and ` + code.Render("false") + `. This can lead to unintended consequences if you want to allow those values. The ` + code.Render("??") + ` operator, on the other hand, only returns the right-hand side if the left-hand side is null or undefined, making it a safer choice for providing default values when dealing with nullable types.`,
+			hint: `function greet(name: string | null): string {
+  const actualName = name ` + kw.Render("??") + ` "monk";
+  return "Hello, " + actualName + "!";
+}`,
 			StarterCode: `function greet(name: string | null): string {
 			  const actualName = name ??? "monk";
 			  return "Hello, " + actualName + "!";
@@ -552,6 +638,13 @@ if (greet(null) !== "Hello, monk!") throw new Error('greet(null) should return "
 			Label:       "",
 			description: "The optional chaining operator `?.` can be used to safely access properties on nullable types",
 			info:        `If an object is null or undefined, the ` + code.Render("?.") + ` operator will short-circuit and return undefined instead of throwing an error. This is especially useful when dealing with deeply nested objects or optional properties.`,
+			hint: `type Monk = {
+  name: string;
+  mentor?: Monk;
+}
+function getMentorName(monk: Monk): string {
+  return monk.mentor` + kw.Render("?.") + `name ?? "No mentor";
+}`,
 			StarterCode: `type Monk = {
 			  name: string;
 			  mentor?: Monk;
@@ -572,6 +665,10 @@ if (getMentorName(xingsi) !== "No mentor") throw new Error("Xingsi should have n
 			Label:       "",
 			description: "The `as const` assertion can be used to make an object literal's properties readonly and its values literal types",
 			info:        `Remember ` + bold.Render("narrowing") + `? The ` + kw.Render("as const") + ` assertion is a way to tell the compiler to infer the narrowest type for an object literal. It makes all properties readonly and infers literal types for the values.`,
+			hint: `const monk = {
+  name: "Linji",
+  age: 800
+} as ` + kw.Render("const") + `;`,
 			StarterCode: `const monk = {
 			  name: "Linji",
 			  age: 800
@@ -593,6 +690,7 @@ if (!("name" in monk)) throw new Error("monk should have name property");
 			Label:       "",
 			description: "A common pattern is to use a literal property to discriminate between types in a union",
 			info:        `This one isn't a specific operator - it's more of a feature of the TS compiler. By providing a property common to all types in a union, we can let the compiler narrow the type based on that property's value!`,
+			hint:        `type Shape = ` + kw.Render("Circle | Square") + `;`,
 			StarterCode: `type Circle {
 			    kind: 'circle';
 				radius: number;
@@ -627,6 +725,11 @@ getArea(mySquare);
 			Label:       "",
 			description: "One may define a `type` as an object",
 			info:        `The power of types is that we can define custom types with any shape!`,
+			hint: kw.Render("type") + ` MyType = {
+  foo: string;
+  bar: number;
+}
+const val: MyType = { foo: "hi", bar: 123 };`,
 			StarterCode: `??? MyType = {
   foo: string;
   bar: number;
@@ -647,6 +750,7 @@ type _Check = Assert<IsType<MyType, { foo: string; bar: number }>>;
 			Label:       "",
 			description: "A type may be the union of other types",
 			info:        `Now we're combining concepts; you can use your type aliases in unions. Suppose you want to allow both people and dogs to access your website. Your login function might accept a union of ` + code.Render("Person") + ` and ` + code.Render("Dog") + ` types!`,
+			hint:        `type MyTypeOrNumber = ` + kw.Render("MyType | number") + `;`,
 			StarterCode: `type MyType = {
   foo: string;
   bar: number;
@@ -668,6 +772,9 @@ type _Check = Assert<IsType<MyTypeOrNumber, MyType | number>>;
 			Label:       "",
 			description: "A type may be extended with `&`",
 			info:        `The intersection operator ` + kw.Render("&") + ` allows us to combine types to create new ones. This is often used to extend an existing type with new properties. For instance, if we have a ` + code.Render("Person") + ` type, we can create a ` + code.Render("Monk") + ` type that includes all the properties of ` + code.Render("Person") + ` and adds some new ones!`,
+			hint: `type Monk = Person ` + kw.Render("&") + ` {
+  isMeditating: boolean;
+}`,
 			StarterCode: `type Person = {
   name: string;
 }
@@ -690,6 +797,13 @@ type _Check = Assert<IsType<Monk, Person & { isMeditating: boolean }>>;
 			Label:       "",
 			description: "A type may not change after its creation",
 			info:        `Once a type alias is declared, it cannot be redeclared or changed (but it can be extended). If you're in a position where you feel like you need to change a type, you might want to be using ` + bold.Render("interfaces") + ` instead - or maybe you need to re-think your model!`,
+			hint: `type Constancy = {
+  foo: boolean
+}
+
+type ` + kw.Render("Flux") + ` = {
+  bar: boolean
+}`,
 			StarterCode: `// The below code will not compile.
 type Constancy = {
   foo: boolean
@@ -713,6 +827,10 @@ type _Check1 = Assert<IsType<Constancy, { foo: boolean }>>;
 			Label:       "",
 			description: "An interface is very similar to a type",
 			info:        kw.Render("Interfaces") + ` are extremely similar to type aliases. In fact, for object types, they are almost interchangeable. Interfaces can be altered after declaration, while types cannot. It's conventional to use interfaces for most object types, and to use type aliases for things like unions and intersections, but you may walk your own path!`,
+			hint: kw.Render("interface") + ` MyInterface {
+  foo: string;
+  bar: number;
+}`,
 			StarterCode: `??? MyInterface {
   foo: string;
   bar: number;
@@ -733,6 +851,9 @@ type _Check = Assert<IsType<MyInterface, { foo: string; bar: number }>>;
 			Label:       "",
 			description: "An interface can be extended as well, with `extends`",
 			info:        `Just like type aliases, interfaces can also be extended to create new interfaces. This is done using the ` + code.Render("extends") + ` keyword. When an interface extends another, it inherits all of its properties and can also add new ones. This is a common way to create more specific types based on more general ones.`,
+			hint: `interface Monk ` + kw.Render("extends") + ` Person {
+  isMeditating: boolean
+}`,
 			StarterCode: `interface Person {
   name: string;
 }
@@ -755,6 +876,9 @@ type _Check = Assert<IsType<Monk, {name: string, isMeditating: boolean }>>;
 			Label:       "",
 			description: "An interface can be redefined freely, merging the declarations",
 			info:        `This is a powerful and confusing feature of interfaces. If you attempt to redeclare an interface, TS will instead merge together all existing declarations of that interface.`,
+			hint: kw.Render("interface") + ` MyInterface {
+  bar: number;
+}`,
 			StarterCode: `interface MyInterface {
   foo: string;
 }
@@ -777,6 +901,10 @@ type _Check = Assert<IsType<MyInterface, { foo: string; bar: number }>>;
 			Label:       "",
 			description: "A tuple is an array that knows its shape and size",
 			info:        `A ` + kw.Render("tuple") + ` is a special type of array, of fixed length and order, where each element is explicitly typed.`,
+			hint: `function foo(myTuple: [string, ` + kw.Render("number") + `]): true {
+  return (typeof myTuple[0] === "string"
+  && typeof myTuple[1] === "number") as true;
+}`,
 			StarterCode: `function foo(myTuple: [string, ???]): true {
   return (typeof myTuple[0] === "string"
   && typeof myTuple[1] === "number") as true;
@@ -794,6 +922,9 @@ type _Check = Assert<IsType<Parameters<typeof foo>[0], [string, number]>>;
 			Label:       "",
 			description: "A tuple can be readonly",
 			info:        `A tuple can be ` + kw.Render("readonly") + `. You might need this one day.`,
+			hint: `function foo(myTuple: ` + kw.Render("readonly") + ` [string, number]): void {
+  console.log(myTuple[0] + " will always be a string")
+}`,
 			StarterCode: `function foo(myTuple: ??? [string, number]): void {
   console.log(myTuple[0] + " will always be a string")
 }
@@ -820,6 +951,9 @@ type _Check = Assert<IsType<Parameters<typeof foo>[0], Readonly<[string, number]
 			Label:       "",
 			description: "There exists a special `Promise` type for functions that return promises",
 			info:        `Asynchronous JS is so common that TS has a built-in type for it. By providing a type to the ` + kw.Render("Promise") + ` utility type, we can tell the compiler what the promise will resolve to.`,
+			hint: `async function foo(): ` + kw.Render("Promise") + `<number> {
+  return 100;
+}`,
 			StarterCode: `async function foo(): ???<number> {
   return 100;
 }`,
@@ -838,6 +972,7 @@ type _Check = Assert<IsType<ReturnType<typeof foo>, Promise<number>>>;
 			Label:       "",
 			description: "Sometimes you may need to tell the compiler what type to expect",
 			info:        `You are a human. There might be a time when you know something your computer doesn't. On these days, you can instruct the compiler to expect a certain type.`,
+			hint:        `const myNum: number = numberReturner(false) ` + kw.Render("as") + ` number;`,
 			StarterCode: `type SometimesANumber = number | string
 function numberReturner(flag: boolean): SometimesANumber {
   return flag ? "Hello" : 100;
@@ -856,6 +991,7 @@ type _Check = Assert<IsType<typeof myNum, number>>;
 			Label:       "",
 			description: "A type can be literally `anything`",
 			info:        `A literal type is a type that represents a specific value. In this case, the variable ` + code.Render("anything") + ` can only have the value ` + code.Render("anything") + `. This might be useful if you have, say, a union of string literals and you want to ensure a variable is one of those specific strings.`,
+			hint:        `let anything: "anything" = ` + kw.Render("\"anything\""),
 			StarterCode: `let anything: "anything" = ???`,
 			TestScript: `
 if (anything !== "anything") throw new Error('anything should be "anything"');
@@ -870,6 +1006,8 @@ type _Check = Assert<IsType<typeof anything, "anything">>;
 			Label:       "",
 			description: "A type can be a union of strings",
 			info:        `Hey, we just talked about this! Maybe you want a variable to only accept one of a few possible values. A union of string literals is a way to do that.`,
+			hint: `type ManyThings = "one" | "another" | ` + kw.Render("\"a secret third thing\"") + `
+let thing: ManyThings = "a secret third thing"`,
 			StarterCode: `type ManyThings = "one" | "another" | ???
 let thing: ManyThings = "a secret third thing"`,
 			TestScript: `
@@ -888,6 +1026,8 @@ type _Check = Assert<IsAssignable<"a secret third thing", ManyThings>>;
 			Label:       "",
 			description: "A type can be a union of numbers",
 			info:        `As with strings, we can create unions of number literals. I think you probably see where this is headed.`,
+			hint: `type ManyNumbers = 1 | 2 | ` + kw.Render("100") + `
+let myNumber: ManyNumbers = 100`,
 			StarterCode: `type ManyNumbers = 1 | 2 | ???
 let myNumber: ManyNumbers = 100`,
 			TestScript: `
@@ -907,6 +1047,9 @@ type _Check = Assert<IsAssignable<100, ManyNumbers>>;
 			Label:       "",
 			description: "Literal types may require assertion",
 			info:        `Sometimes TS won't be able to infer that a variable with a literal union type is actually a specific type. You can be assertive.`,
+			hint: `function foo(value: "bar" | "baz"): void {}
+const myValue = "bar"
+foo(myValue ` + kw.Render("as") + ` "bar")`,
 			StarterCode: `function foo(value: "bar" | "baz"): void {}
 const myValue = "bar"
 // Coerce the compiler with a single operator
@@ -922,6 +1065,12 @@ type _Assert = Assert<IsType<typeof myValue, "bar">>;
 			Label:       "",
 			description: "Enums are sets of named constants that auto-increment",
 			info:        kw.Render("Enums") + ` are a way to define a set of named constants. By default, they auto-increment from 0, but you can also assign specific values. Here's a funny TS quirk: most TS types don't actually generate any JS code - they're just for the compiler. Enums, on the other hand, do generate real JS objects, which is why they have some unique behaviors.`,
+			hint: `enum Colors {
+  Red = 0,
+  Green,
+  Blue,
+}
+Colors.Blue === ` + kw.Render("2"),
 			StarterCode: `enum Colors {
   Red = 0,
   Green,
@@ -941,6 +1090,12 @@ type _Check = Assert<IsType<typeof Colors.Blue, Colors.Blue>>;
 			Label:       "",
 			description: "Enums can have string values",
 			info:        `Enums can also have ` + code.Render("string") + ` values. Unlike number enums, string enums do not auto-increment. That would be unreasonable.`,
+			hint: `enum Colors {
+  Red = "RED",
+  Green = "GREEN",
+  Blue = "BLUE",
+}
+Colors.Blue === ` + kw.Render("\"BLUE\""),
 			StarterCode: `enum Colors {
   Red = "RED",
   Green = "GREEN",
@@ -960,6 +1115,10 @@ type _Check = Assert<IsType<typeof Colors.Blue, Colors.Blue>>;
 			Label:       "",
 			description: "`typeof` can be used in expressions or in types",
 			info:        `The ` + kw.Render("typeof") + ` operator is a powerful tool that we've seen throughout these exercises. It can be used in expressions to check the type of a variable at runtime, and it can also be used in type assertions to infer types based on the value of a variable.`,
+			hint: `let foo = "foo";
+let bar: ` + kw.Render("typeof") + ` foo;
+bar = "bar"
+typeof foo === typeof bar;`,
 			StarterCode: `let foo = "foo";
 let bar: ??? foo;
 bar = "bar"
@@ -978,6 +1137,9 @@ type _Check = Assert<IsType<typeof bar, typeof foo>>;
 			Label:       "",
 			description: "`in` can be used to narrow types",
 			info:        `The ` + kw.Render("in") + ` operator can be used to check if a property exists in an object. This is useful for narrowing types when you have a union of object types.`,
+			hint: `function typeDecider(thing: PersonType | ObjectType): string {
+  return "name" ` + kw.Render("in") + ` thing ? thing.name : thing.foo;
+}`,
 			StarterCode: `type PersonType = {
   name: string
 }
@@ -1001,6 +1163,10 @@ type _Check = Assert<IsType<ReturnType<typeof typeDecider>, string>>;
 			Label:       "",
 			description: "A type predicate will tell the compiler about the type of a variable",
 			info:        `Remember that sometimes you will know more than the compiler. You may use the ` + kw.Render("is") + ` operator to create what is called a type predicate. It takes the form ` + code.Render("myParameterName is someType") + ` and tells the compiler that, ` + bold.Render("if") + ` the function returns true, then the parameter is of the specified type.`,
+			hint: `type Monk = "Linji" | "Zhaozhou"
+function isPerson(value: unknown): value ` + kw.Render("is") + ` Monk {
+  return value === "Linji" || value === "Zhaozhou"
+}`,
 			StarterCode: `type Monk = "Linji" | "Zhaozhou"
 function isPerson(value: unknown): value ??? Monk {
   return value === "Linji" || value === "Zhaozhou"
@@ -1026,6 +1192,9 @@ function testNarrowing(x: unknown) {
 			Label:       "",
 			description: "The `never` type represents values that never occur.",
 			info:        `This is uncommon, but not rare. Some paths are forbidden.`,
+			hint: `function fail(message: string): ` + kw.Render("never") + ` {
+  throw new Error(message);
+}`,
 			StarterCode: `function fail(message: string): ??? {
   throw new Error(message);
 }`,
@@ -1045,6 +1214,9 @@ type _Assert = Assert<IsType<ReturnType<typeof fail>, never>>;
 			Label:       "",
 			description: "Index signatures let you type objects with unknown `key`s, but known value types.",
 			info:        `Sometimes you'll want to create object types, but you won't know the key names at compile time. Don't worry! Somebody has thought of this already. Just provide a type for the keys and a type for the values, and TS will understand the rest!`,
+			hint: `interface PersonAgeMap {
+    [ages: ` + kw.Render("string") + `]: number
+}`,
 			StarterCode: `interface PersonAgeMap {
     [ages: ???]: number
 }
@@ -1069,6 +1241,9 @@ type _KeyCheck = Assert<IsNotType<keyof PersonAgeMap, number>>;
 			Label:       "",
 			description: "The `unknown` type is a safer alternative to any.",
 			info:        `Why not just use ` + code.Render("any") + `? The ` + code.Render("any") + ` type is a way to opt-out of type checking altogether. The ` + code.Render("unknown") + ` type, on the other hand, forces you to perform some kind of type check before you can use the value, making it a safer choice when you don't know the exact type of the values in your object.`,
+			hint: `interface AnyData {
+  [key: string]: ` + kw.Render("unknown") + `;
+}`,
 			StarterCode: `interface AnyData {
   [key: string]: ???;
 }
@@ -1099,6 +1274,7 @@ function useFoo(map: AnyData) {
 			Label:       "",
 			description: `Intersection types (using &) combine multiple types into one.`,
 			info:        `We've seen this operator before - we used it to extend types. But did you know it has another use? It can be a little confusing if you're thinking about it in terms of set theory - but an intersection type in TS represents a subset of values that satisfy all of the combined types. For example, if we have a type that represents objects with a name property, and another type that represents objects with an age property, we can create an intersection type that represents objects that have both a name and an age.`,
+			hint:        `type Person = HasName ` + kw.Render("&") + ` HasAge;`,
 			StarterCode: `type HasName = { name: string };
 type HasAge = { age: number };
 
@@ -1121,6 +1297,9 @@ type _AssertAge = Assert<IsAssignable<typeof user, HasAge>>;
 			Label:       "",
 			description: `You can create reusable types with generics.`,
 			info:        `"Why would I need this?" I hear you asking yourself. But it is more common than you might expect. This Box can hold anything. You might want to give it other box-like properties as well. You can do this without creating a separate type for every possible value.`,
+			hint: `type Box<T> = {
+    value: ` + kw.Render("T") + `
+}`,
 			StarterCode: `type Box<T> = {
     value: ???
 }
@@ -1143,6 +1322,9 @@ type _Str = Assert<IsType<typeof strBox, Box<string>>>;
 			Label:       "",
 			description: `Functions can also be generic!`,
 			info:        `Mayhap you'll need a function that can accept and return any type, so long as they're the same type.`,
+			hint: `function identity<T>(value: T): ` + kw.Render("T") + ` {
+	return value;
+}`,
 			StarterCode: `function identity<T>(value: T): ??? {
 	return value;
 }
@@ -1162,6 +1344,9 @@ type _CheckNum = Assert<IsType<ReturnType<typeof identity>, Parameters<typeof id
 			Label:       "",
 			description: `You can constrain generic types to ensure they have certain properties.`,
 			info:        `The syntax can be overwhelming here. We have a generic function that takes an object of type ` + code.Render("T") + ` and a key of type ` + code.Render("K") + `. The ` + code.Render("K extends keyof T") + ` part is a constraint that says "K must be a key of T". This means that when you call ` + code.Render("getProperty") + `, the compiler will ensure that the key you provide is actually a valid key for the object you're passing in. This allows us to safely access properties on the object without risking a runtime error.`,
+			hint: `function getProperty<T, K extends keyof T>(obj: T, key: K): ` + kw.Render("T[K]") + ` {
+	return obj[key];
+}`,
 			StarterCode: `function getProperty<T, K extends keyof T>(obj: T, key: K): ??? {
 	return obj[key];
 }`,
@@ -1184,6 +1369,9 @@ type _Check2 = Assert<IsType<typeof _age, number>>;
 			Label:       "",
 			description: `Generic type parameters can have defaults, making them optional when using the generic.`,
 			info:        `If no type argument is provided, the default type will be used. That's how defaults work! You knew that. Anyway, here's how you do it in TS. It also works for interfaces, and with multiple type parameters.`,
+			hint: `type Box<T = ` + kw.Render("string") + `> = {
+	value: T;
+}`,
 			StarterCode: `type Box<T = ???> = {
 	value: T;
 }
@@ -1209,6 +1397,7 @@ type _CheckNumber = Assert<IsType<typeof numberBox, Box<number>>>;
 			Label:       "",
 			description: `keyof returns a union of the keys of the given type`,
 			info:        `This comes in handy, believe it or not. You might need to create a type that represents the keys of another type. You can combine this with generics in order to work with the keys of types you might not know at compile time! Doesn't that sound fun?`,
+			hint:        `type UserKeys = ` + kw.Render("keyof User"),
 			StarterCode: `type User = {
     name: string;
     age: number;
@@ -1236,6 +1425,9 @@ type _Assert = Assert<IsType<UserKeys, "name" | "age" | "email">>;
 			Label:       "",
 			description: "A mapped type lets you create a new type by transforming all properties of another type.",
 			info:        `Just as you can ` + code.Render("map") + ` over arrays for create new arrays, you can map over types to create new types.`,
+			hint: `type BooleanFlags = {
+    [K in keyof User]: ` + kw.Render("boolean") + `
+}`,
 			StarterCode: `type User = {
     id: number;
     username: string;
@@ -1267,6 +1459,9 @@ type _Check = Assert<IsType<BooleanFlags, { id: boolean; username: boolean; emai
 			Label:       "",
 			description: "Use a mapped type and the `-?` operator to make all properties of `MaybeUser` required.",
 			info:        `There exists syntactic sugar for removing optional modifiers from properties in a mapped type.`,
+			hint: `type RequiredUser = {
+    [K in keyof MaybeUser]` + kw.Render("-?") + `: MaybeUser[K]
+}`,
 			StarterCode: `type MaybeUser = {
     id?: number;
     username?: string;
@@ -1296,6 +1491,9 @@ type _Check = Assert<IsType<RequiredUser, { id: number; username: string; email:
 			Label:       "",
 			description: "Use a mapped type and the `-readonly` operator to create a type where all properties are writable.",
 			info:        `Just as you can subtract optional modifiers, you can subtract the ` + code.Render("readonly") + ` modifier from properties in a mapped type. Maybe you need a copy of a user that can be edited.`,
+			hint: `type WritableUser = {
+    ` + kw.Render("-readonly") + ` [K in keyof ReadonlyUser]: ReadonlyUser[K]
+}`,
 			StarterCode: `type ReadonlyUser = {
     readonly id: number;
     readonly username: string;
@@ -1328,6 +1526,7 @@ type _Check = Assert<IsNotReadonly<WritableUser, "id">>;
 			Label:       "",
 			info:        `There's no ` + kw.Render("+?") + ` operator to make all properties optional in a mapped type, but there is a built-in utility type that does exactly that.`,
 			description: "The `Partial<T>` utility type makes all properties in T optional.",
+			hint:        `type MaybeUser = ` + kw.Render("Partial") + `<User>`,
 			StarterCode: `type User = {
     id: number;
     username: string;
@@ -1356,6 +1555,7 @@ type _Check = Assert<IsType<MaybeUser, { id?: number; username?: string; email?:
 			Label:       "",
 			description: "The `Required<T>` utility type makes all properties in T required (not optional).",
 			info:        `This can be thought of as shorthand for using a mapped type to remove optional modifiers from all properties. It's the opposite of ` + code.Render("Partial") + `.`,
+			hint:        `type FullUser = ` + kw.Render("Required") + `<User>`,
 			StarterCode: `type User = {
     id?: number;
     username?: string;
@@ -1385,6 +1585,7 @@ type _Check = Assert<IsType<FullUser, { id: number; username: string; email: str
 			Label:       "",
 			description: "The `Pick<T, K>` utility type creates a new type by selecting a subset of properties from T.",
 			info:        `This is useful when you want to create a type that only includes a few properties from another type.`,
+			hint:        `type UserPreview = ` + kw.Render("Pick") + `<User, "id" | "username">`,
 			StarterCode: `type User = {
     id: number;
     username: string;
@@ -1416,6 +1617,7 @@ type _Check2 = Assert<IsType<UserPreview, { id: number; username: string }>>;
 			Label:       "",
 			description: "Sometimes you must omit, to create something new",
 			info:        `The ` + kw.Render("Omit<T, K>") + ` utility type creates a new type by omitting a subset of properties from T. It's the opposite of ` + code.Render("Pick") + `.`,
+			hint:        `type PublicUser = ` + kw.Render("Omit") + `<User, "password">`,
 			StarterCode: `type User = {
     id: number;
     username: string;
@@ -1446,6 +1648,11 @@ type _Check2 = Assert<IsType<keyof PublicUser, "id" | "username" | "email">>;
 			Label:       "",
 			description: "The `Readonly<T>` utility type makes all properties in T readonly.",
 			info:        `This is the equivalent of using a mapped type to add the readonly modifier to all properties. It's a quick way to make an entire type immutable.`,
+			hint: `const user: ` + kw.Render("Readonly") + `<User> = {
+	id: 1,
+	username: "Dongshan",
+	email: "Dongshan@shouchu.com"
+};`,
 			StarterCode: `type User = {
 	id: number;
 	username: string;
@@ -1472,6 +1679,11 @@ type _Check = Assert<IsType<typeof user, Readonly<User>>>;
 			Label:       "",
 			description: "The `Record<K, T>` utility type constructs an object type whose keys are K and values are T.",
 			info:        `Here's one you'll wind up using a lot: ` + kw.Render("Record") + `. Imagine you're waiting for an API response and know that the keys will be a specific set of strings, but you don't know how many there will be or what the values will look like. You can use Record to type this response!`,
+			hint: `const pageViews: ` + kw.Render("Record") + `<Page, number> = {
+	home: 1000,
+	about: 500,
+	contact: 200
+};`,
 			StarterCode: `type Page = "home" | "about" | "contact";
 
 const pageViews: ???<Page, number> = {
@@ -1495,6 +1707,7 @@ type _Check = Assert<IsType<typeof pageViews, Record<Page, number>>>;
 			Label:       "",
 			description: "The `ReturnType<T>` utility type constructs a type consisting of the return type of function T.",
 			info:        `I'll be honest, I haven't had a need for this one. But it seems cool! You can extract the return type of a function and use it elsewhere. Neat!`,
+			hint:        `type User = ` + kw.Render("ReturnType") + `<typeof getUser>`,
 			StarterCode: `function getUser() {
 	return {
 		id: 1,
@@ -1520,6 +1733,8 @@ type _Check = Assert<IsType<User, ReturnType<typeof getUser>>>;
 			Label:       "",
 			description: "The `Exclude<T, U>` utility type constructs a type by excluding from T all union members that are assignable to U.",
 			info:        `This is like using ` + code.Render("Omit") + ` on a union type. It allows you to create a new type by excluding certain members from an existing union type.`,
+			hint: `type someType = string | number | boolean;
+type Excluded = ` + kw.Render("Exclude") + `<someType, string | boolean>;`,
 			StarterCode: `type someType = string | number | boolean;
 type Excluded = ???<someType, string | boolean>;
 
@@ -1538,6 +1753,8 @@ type _Check = Assert<IsType<Excluded, number>>;
 			Label:       "",
 			description: "The `Extract<T, U>` utility type constructs a type by extracting from T all union members that are assignable to U.",
 			info:        `This is the opposite of ` + code.Render("Exclude") + `. It allows you to create a new type by extracting ` + bold.Render("only the members from an existing union type") + ` that are assignable to another type. That's a verbose definition, but language is an imperfect medium.`,
+			hint: `type T = string | number | boolean;
+type Extracted = ` + kw.Render("Extract") + `<T, string | boolean>;`,
 			StarterCode: `type T = string | number | boolean;
 type Extracted = ???<T, string | boolean>;
 
